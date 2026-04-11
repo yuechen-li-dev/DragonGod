@@ -26,10 +26,10 @@ The current repository does **not** yet expose a generic external author-registr
 
 ## 2) Canonical frame authoring shape
 
-A canonical frame function has shape:
+The current canonical authored shape (M9 style) is a typed-phase frame:
 
 - signature: `FrameControl SomeFrame(FrameCtx& ctx)`
-- switch on phase/program counter (`ctx.Pc()` or `ctx.PcAs<TEnum>()`)
+- switch on typed phase/program counter (`ctx.PcAs<TEnum>()`)
 - perform explicit state reads/writes/effects through context (`ctx.Bb()`, `ctx.Mb()`, `ctx.Act()`)
 - return a `Dg::*` control helper for every branch
 
@@ -40,7 +40,7 @@ Typical pattern:
 
 ### Typed phase shape (canonical M9 style)
 
-Use enum-backed typed phases instead of raw integers:
+Use enum-backed typed phases for authored logic:
 
 - `ctx.PcAs<MyPhaseEnum>()`
 - `Dg::Continue(MyPhaseEnum::Next)`
@@ -48,6 +48,8 @@ Use enum-backed typed phases instead of raw integers:
 - `Dg::Stay()` to continue while keeping current `pc`
 
 `Stay()` currently returns `Continue` with `stayOnCurrentPc=true`, so control remains in the same phase on the next tick.
+
+Raw integer `pc` still exists in runtime storage and internal machinery, but authored frame code should lead with typed enum phases unless a narrowly-scoped compatibility case requires otherwise.
 
 ### Do / do-not guidance
 

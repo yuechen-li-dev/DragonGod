@@ -105,7 +105,26 @@ Why: preserves deterministic per-tick emission/pending traces and save/restore b
 
 ## Utility helpers (`When::...`, `Dg::when`, `Dg::Decide`)
 
-Canonical usage:
+### Consideration function shape (`When::...` is just this shape)
+
+A utility consideration is a plain function with signature-compatible shape:
+
+```cpp
+[[nodiscard]] float MyConsideration(const FrameCtx& ctx)
+{
+    // read runtime state through ctx
+    const int raw = ctx.Bb().GetOr(MyScoreKey, 0);
+    return std::clamp(static_cast<float>(raw) / 100.0f, 0.0f, 1.0f);
+}
+```
+
+Author expectations:
+
+- reads from `FrameCtx` (usually blackboard, sometimes mailbox-derived state).
+- returns a score in `[0, 1]`.
+- can be any plain function of that shape; `When::Alerted`, `When::LowAmmo`, and `When::Always` are built-in examples, not special language features.
+
+### Utility decision call site shape
 
 ```cpp
 return Dg::Decide(
@@ -124,26 +143,98 @@ Why: utility commitment/hysteresis/min-commit state is managed in runtime utilit
 
 ## Worked examples aligned to `runtime_nodes.cpp`
 
-### A) Typed phase + `WaitTicks` + mailbox consume
+### A) Typed phase + mailbox + wait/continue (`RootMailboxConsumeFifo`)
 
-`RootMailboxConsumeFifo` uses:
+Real implementation excerpt (condensed):
 
-1. typed phase enum for first vs second consume,
-2. `WaitTicks` when mailbox is empty,
-3. blackboard writes after each consume,
-4. terminal `Complete` after second consume.
+```cpp
+enum class RootMailboxConsumePhase : std::uint32_t
+{
+    ConsumeFirst,
+    ConsumeSecond
+};
 
-This is the canonical “await input over ticks, then commit data” template.
+[[nodiscard]] FrameControl RootMailboxConsumeFifo(FrameCtx& ctx)
+{
+    Message message;
+    switch (ctx.PcAs<RootMailboxConsumePhase>()) {
+    case RootMailboxConsumePhase::ConsumeFirst:
+        if (!ctx.Mb().ConsumeFront(message)) {
+            return Dg::WaitTicks(1, RootMailboxConsumePhase::ConsumeFirst);
+        }
 
-### B) Typed phase + `Stay()` while waiting for later mailbox progression
+        ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+        return Dg::Continue(RootMailboxConsumePhase::ConsumeSecond);
+    case RootMailboxConsumePhase::ConsumeSecond:
+        if (!ctx.Mb().ConsumeFront(message)) {
+            return Dg::WaitTicks(1, RootMailboxConsumePhase::ConsumeSecond);
+        }
 
-`RootTypedPhaseMailboxAct` uses:
+        ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+        return Dg::Complete();
+    default:
+        return Dg::Fail(400);
+    }
+}
+```
 
-1. phase 0 consumes a `Signal`, writes blackboard, schedules deferred actuation,
-2. phase 1 uses `Dg::Stay()` while no `Alert` is visible,
-3. phase 1 completes once `Alert` arrives.
+Why this is canonical:
 
-Use this when you want to keep the current logical phase stable while polling for a condition.
+- phase enum makes first/second consume explicit.
+- mailbox-empty path is deterministic `WaitTicks`, not ad hoc loops.
+- writes happen through typed blackboard keys only.
+- default branch fails explicitly on unexpected phase.
+
+### B) Typed phase + `Stay()` + actuation (`RootTypedPhaseMailboxAct`)
+
+Real implementation excerpt (condensed):
+
+```cpp
+enum class RootTypedPhaseMailboxActPhase : std::uint32_t
+{
+    AwaitSignal,
+    AwaitAlert
+};
+
+[[nodiscard]] FrameControl RootTypedPhaseMailboxAct(FrameCtx& ctx)
+{
+    Message message;
+    switch (ctx.PcAs<RootTypedPhaseMailboxActPhase>()) {
+    case RootTypedPhaseMailboxActPhase::AwaitSignal:
+        if (!ctx.Mb().ConsumeFront(message)) {
+            return Dg::WaitTicks(1, RootTypedPhaseMailboxActPhase::AwaitSignal);
+        }
+
+        if (message.kind != MessageKind::Signal) {
+            return Dg::Fail(706);
+        }
+
+        ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+        ctx.Act().Deferred(ActId::RaiseAlarm, 1);
+        return Dg::Continue(RootTypedPhaseMailboxActPhase::AwaitAlert);
+    case RootTypedPhaseMailboxActPhase::AwaitAlert:
+        if (!ctx.Mb().ConsumeFront(message)) {
+            return Dg::Stay();
+        }
+
+        if (message.kind != MessageKind::Alert) {
+            return Dg::Fail(707);
+        }
+
+        ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+        return Dg::Complete();
+    default:
+        return Dg::Fail(708);
+    }
+}
+```
+
+Why this is canonical:
+
+- first phase validates typed mailbox input before state changes.
+- deferred actuation is requested through `ctx.Act()` at frame boundary.
+- second phase keeps same phase with `Stay()` while awaiting later message progression.
+- completion is explicit and branch-local.
 
 ### C) Parent/child structure with `Push`/`Pop`
 
