@@ -10,7 +10,15 @@ namespace dragongod
     enum class StepOutcome
     {
         Continue,
-        Completed
+        Wait,
+        Completed,
+        Failed
+    };
+
+    enum class ScriptScenario
+    {
+        ContinueWaitComplete,
+        ContinueThenFail
     };
 
     struct TraceEvent
@@ -24,8 +32,12 @@ namespace dragongod
 
     struct AgentRuntimeState
     {
+        ScriptScenario scenario = ScriptScenario::ContinueWaitComplete;
         int counter = 0;
         int completionCounter = 4;
+        int waitCounter = 2;
+        bool waitConsumed = false;
+        int failureCounter = 3;
     };
 
     struct [[nodiscard]] RunResult
@@ -41,5 +53,6 @@ namespace dragongod
 
     private:
         [[nodiscard]] static StepOutcome StepAgent(AgentRuntimeState& state);
+        [[nodiscard]] static bool IsTerminal(StepOutcome outcome);
     };
 }
