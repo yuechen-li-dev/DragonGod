@@ -344,7 +344,7 @@ Score-clamp consequence (author-facing):
 Frame code requests actuation through `ctx.Act()`:
 
 - `Immediate(id)`: emits request in current tick
-- `Deferred(id, delayTicks)`: schedules pending request; matures when `dueTick <= currentTick`
+- `Deferred(id, delayTicks)`: schedules pending request; matures when `dueTick <= currentTick` during a later tick's flush phase (`FlushMatured`).
 
 Tick lifecycle for actuation:
 
@@ -358,6 +358,24 @@ Ordering guarantees from implementation/tests:
 - immediate requests preserve authored call order inside a tick
 - deferred requests with same due tick mature in scheduling order
 - deferred queue persists through save/restore
+
+Deferred maturity timing examples (author-facing, current runtime order):
+
+- Runtime tick order is `BeginTick` -> `FlushMatured` -> frame function execution.
+- So a deferred request created by frame code on tick `N` is always created **after** tick `N`'s `FlushMatured` has already run.
+- Therefore, deferred requests never mature later in the same tick they are emitted, even when `delayTicks == 0`.
+
+Concrete examples:
+
+- `ctx.Act().Deferred(id, 1)` emitted during tick `N`:
+  - at tick `N`, request is added to pending with `dueTick = N + 1` (not emitted this tick).
+  - at tick `N+1`, `FlushMatured` sees `dueTick <= currentTick` and emits it.
+
+- `ctx.Act().Deferred(id, 0)` emitted during tick `N`:
+  - at tick `N`, request is added to pending with `dueTick = N` (still not emitted this tick because flush already happened).
+  - at tick `N+1`, next tick's `FlushMatured` sees `dueTick <= currentTick` and emits it.
+
+Operationally, both `Deferred(id, 0)` and `Deferred(id, 1)` are first observable no earlier than the next tick's flush in the current runtime architecture.
 
 ### Do / do-not guidance
 
@@ -445,6 +463,19 @@ Lower-level/raw trace surface:
   - use this when debugging or asserting specific control-path event sequences.
   - prefer `tickTrace` for stable whole-tick deterministic comparison and use `trace` when you need finer control-event detail.
 
+Current raw `FrameTraceKind` values:
+
+- `Tick`
+- `Enter`
+- `Step`
+- `Push`
+- `Pop`
+- `Replace`
+- `ExitCompleted`
+- `ExitFailed`
+- `TerminalCompleted`
+- `TerminalFailed`
+
 ---
 
 ## 13) `Dg::Fail(reason)` observability semantics (current truth)
@@ -469,6 +500,14 @@ Where it is not surfaced today:
 
 So high-level trace/replay surfaces expose that a failure happened, but not the integer reason code.
 
+Current stack/failure propagation behavior when a frame returns `Dg::Fail(reason)`:
+
+- the failing top frame emits `Step` (`control=Fail`), then `ExitFailed`, then `TerminalFailed` in raw `trace`.
+- runtime marks outcome failed immediately for that tick and does not pop-and-resume parent frames.
+- frames below the failing frame remain in the in-memory stack snapshot for that terminal tick, but they do not execute again because the session is terminal failed.
+- blackboard writes that already happened earlier in that same tick are not rolled back; `finalBlackboard` preserves those writes.
+
+This is implementation truth in the current runtime, not a generic stack-machine convention; do not infer alternate parent-unwind or rollback semantics that are not present in this codebase.
 
 Unregistered frame failure behavior (current runtime truth):
 
