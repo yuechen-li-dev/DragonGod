@@ -317,7 +317,39 @@ Why this is canonical:
 - child terminates with `Pop()` instead of parent bookkeeping.
 - parent resumes at the declared continuation point and finishes.
 
-### D) Utility-driven action frame selection
+### D) Replace to abandon current frame state (`RootReplace` -> `RecoveryComplete`)
+
+Real implementation excerpt (condensed):
+
+```cpp
+[[nodiscard]] FrameControl RootReplace(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        return Dg::Replace(FrameId::RecoveryComplete);
+    default:
+        return Dg::Fail(101);
+    }
+}
+
+[[nodiscard]] FrameControl RecoveryComplete(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        return Dg::Complete();
+    default:
+        return Dg::Fail(106);
+    }
+}
+```
+
+Why this uses `Replace` (instead of `Pop` + `Push`):
+
+- intent is to abandon `RootReplace` as the active top frame immediately and continue with a different top frame.
+- no parent resume-point bookkeeping is needed (`Push` requires a parent resume pc; `Replace` does not).
+- the replaced frame state (its `pc`, wait countdown, and future progression path) is discarded in practice; execution continues in the replacement frame (`RecoveryComplete`) as a fresh top-of-stack frame.
+
+### E) Utility-driven action frame selection
 
 Real implementation excerpt (condensed):
 
