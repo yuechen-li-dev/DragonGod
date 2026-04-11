@@ -75,7 +75,7 @@ Per tick, runtime operates on the current top stack frame:
 - `Continue(resumePc)`: frame remains active; `pc` becomes `resumePc`.
 - `Stay()`: frame remains active; `pc` remains unchanged.
 - `WaitTicks(ticks, resumePc)`: `pc` set to `resumePc`; frame waits across ticks using `remainingWaitTicks` countdown.
-- `Push(target, resumePc)`: parent `pc` set to `resumePc`; child frame pushed.
+- `Push(target, resumePc)`: parent `pc` set to `resumePc`; child frame is pushed immediately onto stack, but executes on the next tick (runtime executes one top frame per tick).
 - `Pop()`: current frame exits completed; parent resumes next tick.
 - `Replace(target)`: top frame replaced atomically with new frame.
 - `Complete()`: equivalent terminal-complete exit for current frame (pops it).
@@ -94,6 +94,13 @@ If popping/completing empties the stack, runtime outcome becomes `Completed`.
 - Do use `Replace` when abandoning current frame state is desired.
 - Do not treat `Wait` as terminal.
 - Do not assume completion ends runtime if deferred actuation is still pending.
+
+Push timing detail in the current top-of-stack model:
+
+- tick N executes the current top frame and receives `FrameControl`.
+- if control is `Push`, parent frame `pc` is updated to push `resumePc` during tick N, and the child is appended to stack during tick N.
+- tick N+1 then executes that child (now top of stack).
+- after child `Pop()`/`Complete()`, parent resumes on a later tick from the stored resume `pc`.
 
 ---
 
@@ -253,8 +260,15 @@ Decision behavior:
    - `minCommitTicks`: blocks switch until age threshold reached
    - `hysteresis`: challenger must exceed committed score by margin
 5. updates utility memory (`committed`, `age`)
-6. pushes chosen target frame with `Push(chosen, ctx.Pc())`
+6. returns `Push(chosen, ctx.Pc())`
 7. emits per-decision trace (`UtilityDecisionTraceEntry`)
+
+`Dg::Decide(...)` timing and resume semantics in current runtime:
+
+- structurally, `Decide` is a scoring + tie-break + commitment helper that ends by returning a normal `Push`.
+- because it returns `Push(chosen, ctx.Pc())`, it preserves the parent frame's current `pc` as the parent resume point.
+- selected action child is pushed in the same tick the decision is made, but starts executing on the next tick (same `Push` timing model as above).
+- when the chosen child later `Pop()`s or `Complete()`s, parent resumes at that preserved `pc`, so the decision phase can be revisited deterministically on subsequent ticks.
 
 ### Do / do-not guidance
 
@@ -316,7 +330,52 @@ For DragonGod runtime truth, Marionette tests currently serve as the semantic pr
 
 ---
 
-## 11) `Dg::Fail(reason)` observability semantics (current truth)
+## 11) Runtime entry surfaces: `StackFrameRuntime` vs `StackFrameRuntimeSession`
+
+Both are valid runtime entry points, but with different intent:
+
+- `StackFrameRuntime` is the stateless convenience surface for fresh runs.
+  - call `RunForTicks(scenario, ticks[, mailboxInput])`
+  - each call constructs a fresh session from scenario + optional mailbox input
+  - use when tests/authors only need single-shot run results.
+- `StackFrameRuntimeSession` is the stateful continuation surface.
+  - keeps evolving runtime state across calls to `RunForTicks(...)`
+  - exposes `NextTick()`, `LastOutcome()`, `IsTerminal()`, and `Save()`
+  - supports split execution, save/restore, and deterministic replay across chunk boundaries.
+
+Choose `StackFrameRuntime` for simple scenario assertions and `StackFrameRuntimeSession` when you need stepping or persistence boundaries as part of test/runtime behavior.
+
+---
+
+## 12) `FrameRunResult` as a test-facing inspection surface
+
+`FrameRunResult` is the primary post-run inspection object for authored tests.
+
+High-level result fields:
+
+- `finalOutcome`: terminal/non-terminal outcome after the run slice.
+  - assert this when validating completion/failure/wait progression.
+- `finalBlackboard`: blackboard snapshot at end of run slice.
+  - assert this for authored state outcomes.
+
+Per-tick deterministic surfaces:
+
+- `tickTrace`: bounded per-tick runtime truth (`tick`, `outcome`, stack, dirty slots, visible mailbox, utility decisions, emitted/pending actuation).
+  - assert this (often via `CompareTickTraces`) when replay determinism matters.
+- `actuationByTick`: emitted actuation requests per executed tick.
+  - assert this when validating immediate/deferred effect timing.
+- `visibleMailboxByTick` and `dirtySlotsByTick`:
+  - assert these when mailbox staging or blackboard write timing is the behavior under test.
+
+Lower-level/raw trace surface:
+
+- `trace` (`std::vector<FrameTraceEvent>`) is event-level frame trace data (enter/step/push/pop/terminal markers).
+  - use this when debugging or asserting specific control-path event sequences.
+  - prefer `tickTrace` for stable whole-tick deterministic comparison and use `trace` when you need finer control-event detail.
+
+---
+
+## 13) `Dg::Fail(reason)` observability semantics (current truth)
 
 `Dg::Fail(reason)` is an explicit author failure marker that returns `FrameControlKind::Fail` and carries an integer `failReason` in `FrameControl`.
 
@@ -340,7 +399,7 @@ So high-level trace/replay surfaces expose that a failure happened, but not the 
 
 ---
 
-## 12) Cross-cutting anti-patterns (authoring guardrails)
+## 14) Cross-cutting anti-patterns (authoring guardrails)
 
 1. **Do not hand-roll phase state in blackboard** when typed phase helpers already express it.
 2. **Do not bypass `ctx.Act()`** with direct effect mutation; that breaks trace/persistence boundaries.
@@ -353,7 +412,7 @@ So high-level trace/replay surfaces expose that a failure happened, but not the 
 
 ---
 
-## 13) Known clarity gaps called out explicitly
+## 15) Known clarity gaps called out explicitly
 
 These are current-state clarity gaps in repository ergonomics (not hidden assumptions):
 

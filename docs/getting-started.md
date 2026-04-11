@@ -113,6 +113,15 @@ const dragongod::FrameRunResult run =
 
 Expect terminal completion in 2 ticks for this minimal frame.
 
+What to inspect from `run` first:
+
+- `run.finalOutcome` for completion/failure/wait status,
+- `run.finalBlackboard` for authored state results,
+- `run.tickTrace` / `run.actuationByTick` for timing-sensitive deterministic assertions,
+- `run.trace` only when you need lower-level frame event sequence details.
+
+If you need continuation/stepping or save/restore, switch from `StackFrameRuntime` to `StackFrameRuntimeSession` and call `RunForTicks(...)` in legs with `Save()`/restore between legs.
+
 ### 6) Add one Marionette FACT
 
 Create a test in `tests/DragonGod.Tests/...`:
