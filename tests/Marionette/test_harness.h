@@ -92,6 +92,12 @@ namespace marionette::tests
         TestRegistrar(const char* testName, TestFunction function);
     };
 
+    void AssertDoomByName(
+        TestContext& context,
+        std::string_view doomCaseName,
+        const char* file,
+        int line);
+
     struct BenchmarkContext
     {
         std::uint64_t iteration = 0;
@@ -287,4 +293,9 @@ namespace marionette::tests
 #define ASSERT_SEQUENCE_EQUAL(EXPECTED, ACTUAL, MESSAGE) \
     do { \
         ::marionette::tests::AssertSequenceEqual(context, (EXPECTED), (ACTUAL), __FILE__, __LINE__, MESSAGE); \
+    } while (false)
+
+#define ASSERT_DOOM(DOOM_CASE_NAME) \
+    do { \
+        ::marionette::tests::AssertDoomByName(context, #DOOM_CASE_NAME, __FILE__, __LINE__); \
     } while (false)

@@ -1,4 +1,5 @@
 #include "test_harness.h"
+#include "test_doom.h"
 
 #include <algorithm>
 #include <chrono>
@@ -7,6 +8,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 
 namespace marionette::tests
@@ -87,6 +89,18 @@ namespace marionette::tests
         {
             std::ostringstream stream;
             stream << std::setprecision(17) << value;
+            return stream.str();
+        }
+
+        [[nodiscard]] std::string ReadTextFile(const std::filesystem::path& path)
+        {
+            std::ifstream file(path, std::ios::binary);
+            if (!file.is_open()) {
+                return {};
+            }
+
+            std::ostringstream stream;
+            stream << file.rdbuf();
             return stream.str();
         }
     }
@@ -237,6 +251,90 @@ namespace marionette::tests
             .name = testName,
             .function = function
         });
+    }
+
+    void AssertDoomByName(
+        TestContext& context,
+        std::string_view doomCaseName,
+        const char* file,
+        int line)
+    {
+        if (!IsDoomCaseRegistered(doomCaseName)) {
+            context.RecordFailure(
+                file,
+                line,
+                "ASSERT_DOOM",
+                "doom case is not registered",
+                std::string(doomCaseName),
+                "missing");
+            return;
+        }
+
+        const std::filesystem::path artifactDirectory =
+            context.ArtifactDirectory() / "doom" / std::string(doomCaseName);
+        const DoomRunResult result = RunDoomCaseSubprocess(doomCaseName, artifactDirectory);
+        if (!result.launched) {
+            context.RecordFailure(
+                file,
+                line,
+                "ASSERT_DOOM",
+                "doom subprocess did not launch",
+                "launched",
+                "not launched");
+            return;
+        }
+
+        const bool hasForetelling = !result.foretelling.empty();
+        const bool hasBreadcrumb = std::filesystem::exists(result.breadcrumbPath);
+        const bool hasStdout = std::filesystem::exists(result.stdoutPath);
+        const bool hasStderr = std::filesystem::exists(result.stderrPath);
+
+        const bool hasDiagnosticEnvelope = hasForetelling && hasBreadcrumb && hasStdout && hasStderr;
+        if (!result.terminatedAbnormally || !hasDiagnosticEnvelope) {
+            std::string actual = "terminatedAbnormally=" + FormatValue(result.terminatedAbnormally)
+                + ", hasForetelling=" + FormatValue(hasForetelling)
+                + ", hasBreadcrumb=" + FormatValue(hasBreadcrumb)
+                + ", hasStdout=" + FormatValue(hasStdout)
+                + ", hasStderr=" + FormatValue(hasStderr);
+            context.RecordFailure(
+                file,
+                line,
+                "ASSERT_DOOM",
+                "doom envelope was not recovered",
+                "terminated abnormally with diagnostic envelope",
+                actual);
+        }
+
+        const std::string breadcrumbText = ReadTextFile(result.breadcrumbPath);
+        const std::string stdoutText = ReadTextFile(result.stdoutPath);
+        const std::string stderrText = ReadTextFile(result.stderrPath);
+
+        std::string summary = "doom-case=" + std::string(doomCaseName) + "\n";
+        summary += "terminated-abnormally=" + FormatValue(result.terminatedAbnormally) + "\n";
+        summary += "exit-code=" + std::to_string(result.exitCode) + "\n";
+        summary += "signal=" + std::to_string(result.signalNumber) + "\n";
+        summary += "foretelling=" + result.foretelling + "\n";
+        summary += "artifact-directory=" + result.artifactDirectory.string() + "\n";
+
+        const bool wroteSummary =
+            context.WriteTextArtifact(std::string("doom_") + std::string(doomCaseName) + "_summary", summary);
+        const bool wroteBreadcrumb =
+            context.WriteTextArtifact(std::string("doom_") + std::string(doomCaseName) + "_breadcrumb", breadcrumbText);
+        const bool wroteStdout =
+            context.WriteTextArtifact(std::string("doom_") + std::string(doomCaseName) + "_stdout", stdoutText);
+        const bool wroteStderr =
+            context.WriteTextArtifact(std::string("doom_") + std::string(doomCaseName) + "_stderr", stderrText);
+
+        const bool wroteArtifacts = wroteSummary && wroteBreadcrumb && wroteStdout && wroteStderr;
+        if (!wroteArtifacts) {
+            context.RecordFailure(
+                file,
+                line,
+                "ASSERT_DOOM",
+                "failed to persist one or more doom artifacts",
+                "all artifacts written",
+                "artifact write failure");
+        }
     }
 
     BenchmarkRegistrar::BenchmarkRegistrar(
