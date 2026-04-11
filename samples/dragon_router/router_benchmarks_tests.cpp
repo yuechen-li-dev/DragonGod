@@ -18,17 +18,32 @@ namespace
         return state;
     }
 
-    [[nodiscard]] RouterState BuildUtilityChoiceState()
+    [[nodiscard]] RouterState BuildUtilityChoiceState(const int candidateCount)
     {
         RouterState state{};
-        state.routes.push_back(RouteEntry{ .destinationId = 10, .egressPort = 1, .healthy = true });
-        state.routes.push_back(RouteEntry{ .destinationId = 10, .egressPort = 2, .healthy = true });
-        state.ports.push_back(PortState{ .portId = 1, .linkUp = true, .queueFull = false, .congestionScore = 55 });
-        state.ports.push_back(PortState{ .portId = 2, .linkUp = true, .queueFull = false, .congestionScore = 5 });
+
+        const int boundedCandidates = candidateCount < 1 ? 1 : candidateCount;
+        for (int index = 0; index < boundedCandidates; ++index) {
+            const int portId = index + 1;
+            state.routes.push_back(RouteEntry{
+                .destinationId = 10,
+                .egressPort = portId,
+                .healthy = true
+            });
+
+            state.ports.push_back(PortState{
+                .portId = portId,
+                .linkUp = true,
+                .queueFull = false,
+                .congestionScore = 70 - (index * 5)
+            });
+        }
+
+        state.ports[0].congestionScore = 0;
         return state;
     }
 
-    [[nodiscard]] RouterState BuildQueueDrainState(const bool queueBlocked)
+    [[nodiscard]] RouterState BuildQueueState(const bool queueBlocked)
     {
         RouterState state{};
         state.routes.push_back(RouteEntry{ .destinationId = 11, .egressPort = 3, .healthy = true });
@@ -64,18 +79,39 @@ BENCHMARK_WITH_ITERATIONS(DragonRouter_ForwardKnownRouteBench, 10000)
     ConsumeResult(output);
 }
 
-BENCHMARK_WITH_ITERATIONS(DragonRouter_UtilityPathChoiceBench, 10000)
+BENCHMARK_WITH_ITERATIONS(DragonRouter_UtilityCandidates1Bench, 10000)
 {
     const Packet packet = BuildPacket(10, context.iteration);
-    const RouterRunOutput output = RunRouterGoldenPath(BuildUtilityChoiceState(), { packet });
+    const RouterRunOutput output = RunRouterGoldenPath(BuildUtilityChoiceState(1), { packet });
     ConsumeResult(output);
 }
 
-BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryDrainBench, 5000)
+BENCHMARK_WITH_ITERATIONS(DragonRouter_UtilityCandidates2Bench, 10000)
+{
+    const Packet packet = BuildPacket(10, context.iteration);
+    const RouterRunOutput output = RunRouterGoldenPath(BuildUtilityChoiceState(2), { packet });
+    ConsumeResult(output);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_UtilityCandidates4Bench, 10000)
+{
+    const Packet packet = BuildPacket(10, context.iteration);
+    const RouterRunOutput output = RunRouterGoldenPath(BuildUtilityChoiceState(4), { packet });
+    ConsumeResult(output);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_UtilityCandidates8Bench, 10000)
+{
+    const Packet packet = BuildPacket(10, context.iteration);
+    const RouterRunOutput output = RunRouterGoldenPath(BuildUtilityChoiceState(8), { packet });
+    ConsumeResult(output);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryLightBench, 5000)
 {
     const Packet packet = BuildPacket(11, context.iteration);
 
-    const RouterRunOutput queuedRun = RunRouterGoldenPath(BuildQueueDrainState(true), { packet });
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(BuildQueueState(true), { packet });
 
     RouterState retryState = queuedRun.finalState;
     retryState.ports[0].queueFull = false;
@@ -84,4 +120,26 @@ BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryDrainBench, 5000)
 
     ConsumeResult(queuedRun);
     ConsumeResult(drainedRun);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryHeavyBench, 3000)
+{
+    RouterState state = BuildQueueState(true);
+
+    const Packet packetA = BuildPacket(11, context.iteration * 3);
+    const Packet packetB = BuildPacket(11, context.iteration * 3 + 1);
+    const Packet packetC = BuildPacket(11, context.iteration * 3 + 2);
+
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packetA, packetB, packetC });
+
+    RouterState blockedRetryState = queuedRun.finalState;
+    const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(blockedRetryState, {});
+
+    RouterState recoverState = blockedRetryRun.finalState;
+    recoverState.ports[0].queueFull = false;
+    const RouterRunOutput recoveredDrainRun = RunRouterGoldenPath(recoverState, {});
+
+    ConsumeResult(queuedRun);
+    ConsumeResult(blockedRetryRun);
+    ConsumeResult(recoveredDrainRun);
 }
