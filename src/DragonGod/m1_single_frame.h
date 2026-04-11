@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -542,8 +543,8 @@ namespace dragongod
         Mailbox mailbox_;
         std::vector<ScheduledMessage> scheduledMessages_;
         std::vector<StackFrameChunkEntry> stack_;
-        ActRuntime* actRuntime_ = nullptr;
-        UtilityMemoryStore* utilityMemory_ = nullptr;
+        std::unique_ptr<ActRuntime> actRuntime_;
+        std::unique_ptr<UtilityMemoryStore> utilityMemory_;
     };
 
     class StackFrameRuntime
