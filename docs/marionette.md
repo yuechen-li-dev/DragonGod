@@ -103,7 +103,7 @@ BENCHMARK(MyBenchmark)
 }
 ```
 
-Uses default iteration count.
+`BENCHMARK(...)` currently defaults to **10000 iterations** per benchmark case.
 
 ### `BENCHMARK_WITH_ITERATIONS`
 
@@ -116,6 +116,13 @@ BENCHMARK_WITH_ITERATIONS(MyBenchmarkFixed, 128)
 ```
 
 Use when you need explicit fixed iteration count.
+
+### `ExecuteBenchmarks` vs `RunBenchmarks`
+
+- `ExecuteBenchmarks(filter)` runs matching benchmark functions and returns a structured `std::vector<BenchmarkResult>` (`name`, `iterations`, `elapsedNanoseconds`) for assertions, custom formatting, or artifact emission.
+- `RunBenchmarks(filter)` is the CLI-oriented wrapper: it calls `ExecuteBenchmarks`, prints `[BENCH] ...` summary lines, and returns process exit code `0`.
+
+Use `ExecuteBenchmarks` from tests/library code when you need programmatic inspection; use `RunBenchmarks` for `main()` bench mode (`--bench`).
 
 > Guidance: benchmarks measure performance behavior; they are not substitutes for `FACT`/`THEORY` correctness checks.
 
@@ -147,6 +154,35 @@ FACT(DoomEnvelopeRecovered)
 ```
 
 Asserts the doom subprocess terminated abnormally and produced expected diagnostic envelope artifacts.
+
+### Operational wiring required in a real test binary
+
+Doom tests need explicit process wiring (as in `tests/Marionette/test_main.cpp`):
+
+1. **Set executable path early** so the parent can spawn itself:
+
+```cpp
+if (argc >= 1 && argv[0] != nullptr) {
+    ::marionette::tests::SetMarionetteExecutablePath(std::filesystem::path(argv[0]));
+}
+```
+
+2. **Handle doom child mode in `main()`**:
+
+```cpp
+if (mode == "--doom-case") {
+    // argv[2] = doom case name
+    // argv[3] must be "--doom-artifact-dir"
+    // argv[4] = artifact directory path
+    return ::marionette::tests::RunDoomCaseInChild(doomCaseName, artifactDirectory);
+}
+```
+
+3. The parent-side doom launcher (`RunDoomCaseSubprocess`) invokes the executable with:
+   - `--doom-case <CaseName>`
+   - `--doom-artifact-dir <ArtifactDirectory>`
+
+Without this `main()` contract plus `SetMarionetteExecutablePath(...)`, doom subprocess assertions cannot launch correctly.
 
 > Guidance: doom tests are intentionally quarantined behavior. Do not use doom patterns casually in greenfield runtime or ordinary unit tests.
 

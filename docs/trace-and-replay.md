@@ -42,6 +42,26 @@ For `StackFrameRuntimeSession::RunSingleTick(...)`, the current order is:
 
 This is the bounded deterministic replay surface.
 
+## Concrete tiny example (serialized tick trace)
+
+`SerializeTickTrace(...)` emits one compact string per `TickTraceEntry`. A tiny run can look like:
+
+```text
+tick=0|outcome=0|stack=13,1,1,0;|dirty=4;|mailbox=0,11;|utility=|act=|pending=
+tick=1|outcome=2|stack=|dirty=5;|mailbox=1,22;|utility=|act=|pending=
+```
+
+How to read this quickly:
+
+- `tick` is tick index.
+- `outcome` is numeric `StackRunOutcome` value for that tick entry.
+- `stack` entries are `frameId,pc,entered,remainingWaitTicks;`.
+- `dirty` is the set of blackboard slot ids written that tick.
+- `mailbox` entries are `kind,value;` visible at tick processing.
+- `utility`, `act`, and `pending` carry bounded utility and actuation evidence when present.
+
+The exact ids vary by scenario, but this is the shape you assert against in replay/determinism tests.
+
 ## Replay comparison
 
 Use:
