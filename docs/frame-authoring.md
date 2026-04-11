@@ -66,6 +66,44 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
 - `Dg::Fail(reason)`
   - terminal-fail this frame/runtime.
 
+### Current typed-phase asymmetry (intentional, not a docs bug)
+
+Today, typed phase helpers exist for:
+
+- `ctx.PcAs<TEnum>()`
+- `Dg::Continue(TEnum)`
+- `Dg::WaitTicks(ticks, TEnum)`
+
+But `Dg::Push(...)` is still numeric for the parent resume point:
+
+- `Dg::Push(FrameId target, std::uint32_t resumePc)`
+
+That means parent frames using typed enums still pass a numeric resume pc on push. Canonical pattern:
+
+```cpp
+enum class RootPhase : std::uint32_t
+{
+    PushChild = 0,
+    AfterChild = 1
+};
+
+[[nodiscard]] FrameControl Root(FrameCtx& ctx)
+{
+    switch (ctx.PcAs<RootPhase>()) {
+    case RootPhase::PushChild:
+        return Dg::Push(
+            FrameId::ChildPop,
+            static_cast<std::uint32_t>(RootPhase::AfterChild));
+    case RootPhase::AfterChild:
+        return Dg::Complete();
+    default:
+        return Dg::Fail(999);
+    }
+}
+```
+
+Using a raw integer resume pc is also valid when explicit at the call site.
+
 ## Blackboard via `ctx.Bb()`
 
 Canonical usage:
@@ -78,6 +116,15 @@ if (ctx.Bb().GetOr(Keys::Alerted, false)) {
 ```
 
 Use typed keys (`BbKey<bool>` / `BbKey<int>`) with stable slot ids.
+
+> ⚠️ **Hazard: `BbKey` identity is the slot id, not the name.**
+>
+> In the current runtime, `Blackboard::Set/TryGet/GetOr/IsDirty` index storage by `key.slot`.
+> The `key.name` string is descriptive/debugging metadata only.
+> If two different keys reuse the same `.slot`, they alias the same stored value silently, even if names differ.
+> Treat slot allocation as a global uniqueness constraint for the runtime/session key set.
+>
+> Current project convention: define keys centrally in `runtime_nodes.cpp` under `nodes::Keys` with explicit integer slots (`1`, `2`, ...), then reuse those constants everywhere.
 
 ## Mailbox via `ctx.Mb()`
 
@@ -238,24 +285,89 @@ Why this is canonical:
 
 ### C) Parent/child structure with `Push`/`Pop`
 
-`RootPushChild` + `ChildPop` demonstrates:
+Real implementation excerpt (condensed):
 
-- parent pushes child with parent resume pc,
-- child performs its local work and pops,
-- parent resumes and completes.
+```cpp
+[[nodiscard]] FrameControl RootPushChild(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        return Dg::Push(FrameId::ChildPop, 1);
+    case 1:
+        return Dg::Complete();
+    default:
+        return Dg::Fail(100);
+    }
+}
 
-Use this as your default subroutine/call-frame structure.
+[[nodiscard]] FrameControl ChildPop(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        return Dg::Pop();
+    default:
+        return Dg::Fail(200);
+    }
+}
+```
+
+Why this is canonical:
+
+- parent pushes child with explicit parent resume pc.
+- child terminates with `Pop()` instead of parent bookkeeping.
+- parent resumes at the declared continuation point and finishes.
 
 ### D) Utility-driven action frame selection
 
-`RootUtilityHighestScore` + utility action frames demonstrates:
+Real implementation excerpt (condensed):
 
-- root sets scoring signals,
-- root calls `Dg::Decide(...)`,
-- chosen action frame runs and pops,
-- root completes after expected decision count.
+```cpp
+[[nodiscard]] FrameControl RootUtilityHighestScore(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        ctx.Bb().Set(Keys::AlertScore, 10);
+        ctx.Bb().Set(Keys::LowAmmoScore, 80);
+        ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
+        return Dg::Continue(1);
+    case 1:
+        if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 1) {
+            return Dg::Complete();
+        }
 
-Use this for runtime-managed utility switching instead of ad hoc branching state.
+        return Dg::Decide(
+            ctx,
+            {
+                Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
+                Dg::when(FrameId::UtilityActionPatrol, When::Always)
+            },
+            Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
+    default:
+        return Dg::Fail(500);
+    }
+}
+
+[[nodiscard]] FrameControl UtilityActionReload(FrameCtx& ctx)
+{
+    switch (ctx.Pc()) {
+    case 0:
+        ctx.Bb().Set(Keys::UtilityChoice, 2);
+        ctx.Bb().Set(
+            Keys::UtilityDecisionsMade,
+            ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) + 1);
+        return Dg::Pop();
+    default:
+        return Dg::Fail(507);
+    }
+}
+```
+
+Why this is canonical:
+
+- root writes scoring signals to blackboard, then delegates selection to `Dg::Decide(...)`.
+- selected utility action runs as a child frame and exits with `Pop()`.
+- root completion condition stays explicit (`UtilityDecisionsMade` threshold).
 
 ---
 

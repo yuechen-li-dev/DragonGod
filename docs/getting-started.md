@@ -37,11 +37,19 @@ This is the smallest copy-pasteable path aligned with current code.
 
 In `src/DragonGod/runtime.h`, add one `FrameId` and one `StackScriptScenario` entry.
 
+If this new frame will emit actuation (`ctx.Act().Immediate(...)` or `ctx.Act().Deferred(...)`), also add the needed `ActId` enum entry in the same file. This extension step is analogous to adding a new `FrameId`; otherwise `ActId::YourNewAction` will not exist at compile time.
+
 ```cpp
 enum class FrameId
 {
     // ...existing ids...
     RootHelloTwoPhase
+};
+
+enum class ActId
+{
+    // ...existing ids...
+    YourNewAction
 };
 
 enum class StackScriptScenario

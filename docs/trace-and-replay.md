@@ -81,4 +81,6 @@ Comparison behavior:
 
 Persisted state includes stack, blackboard, mailbox, utility memory, deferred actuation queue, scheduled messages, tick index, and prior outcome.
 
+This includes each persisted stack frame's `entered` flag. After restore, a frame that had already entered before `Save()` remains entered, so the runtime does not emit a second enter event just because restore happened.
+
 That is why deferred actuation maturity timing, mailbox staged/visible state, and utility commitment age can remain replay-equivalent across chunk boundaries.
