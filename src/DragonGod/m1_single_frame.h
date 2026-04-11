@@ -99,12 +99,22 @@ namespace dragongod
     {
         TickIndex tick = 0;
         Message message{};
+
+        [[nodiscard]] bool operator==(const ScheduledMessage& other) const = default;
     };
 
     struct RuntimeMailboxInput
     {
         std::vector<Message> initialMessages;
         std::vector<ScheduledMessage> scheduledMessages;
+    };
+
+    struct MailboxChunk
+    {
+        std::vector<Message> visibleMessages;
+        std::vector<Message> stagedMessages;
+
+        [[nodiscard]] bool operator==(const MailboxChunk& other) const = default;
     };
 
     class Mailbox
@@ -116,6 +126,9 @@ namespace dragongod
         [[nodiscard]] bool PeekFront(Message& message) const;
         [[nodiscard]] bool ConsumeFront(Message& message);
         [[nodiscard]] const std::vector<Message>& VisibleMessages() const;
+        [[nodiscard]] const std::vector<Message>& StagedMessages() const;
+        [[nodiscard]] MailboxChunk ExportChunk() const;
+        void ImportChunk(const MailboxChunk& chunk);
 
     private:
         std::vector<Message> visible_;
@@ -132,6 +145,31 @@ namespace dragongod
     class Blackboard
     {
     public:
+        struct BoolChunkEntry
+        {
+            std::uint32_t slot = 0;
+            bool value = false;
+
+            [[nodiscard]] bool operator==(const BoolChunkEntry& other) const = default;
+        };
+
+        struct IntChunkEntry
+        {
+            std::uint32_t slot = 0;
+            int value = 0;
+
+            [[nodiscard]] bool operator==(const IntChunkEntry& other) const = default;
+        };
+
+        struct Chunk
+        {
+            std::vector<BoolChunkEntry> boolEntries;
+            std::vector<IntChunkEntry> intEntries;
+            std::vector<std::uint32_t> dirtySlots;
+
+            [[nodiscard]] bool operator==(const Chunk& other) const = default;
+        };
+
         template <typename T>
         void Set(BbKey<T> key, const T& value);
 
@@ -146,6 +184,8 @@ namespace dragongod
 
         [[nodiscard]] const std::vector<std::uint32_t>& DirtySlots() const;
         void ClearDirty();
+        [[nodiscard]] Chunk ExportChunk() const;
+        void ImportChunk(const Chunk& chunk);
 
     private:
         struct BoolEntry
@@ -256,6 +296,63 @@ namespace dragongod
         Blackboard finalBlackboard;
     };
 
+    struct StackFrameChunkEntry
+    {
+        FrameId id = FrameId::RootPushChild;
+        std::uint32_t pc = 0;
+        bool entered = false;
+        std::uint32_t remainingWaitTicks = 0;
+
+        [[nodiscard]] bool operator==(const StackFrameChunkEntry& other) const = default;
+    };
+
+    struct StackChunk
+    {
+        std::vector<StackFrameChunkEntry> frames;
+
+        [[nodiscard]] bool operator==(const StackChunk& other) const = default;
+    };
+
+    struct RuntimeChunk
+    {
+        StackScriptScenario scenario = StackScriptScenario::PushPopComplete;
+        TickIndex nextTick = 0;
+        StackRunOutcome lastOutcome = StackRunOutcome::Continue;
+        std::vector<ScheduledMessage> scheduledMessages;
+        StackChunk stack;
+        Blackboard::Chunk blackboard;
+        MailboxChunk mailbox;
+
+        [[nodiscard]] bool operator==(const RuntimeChunk& other) const = default;
+    };
+
+    class StackFrameRuntimeSession
+    {
+    public:
+        StackFrameRuntimeSession(StackScriptScenario scenario, const RuntimeMailboxInput& mailboxInput);
+        explicit StackFrameRuntimeSession(const RuntimeChunk& chunk);
+
+        [[nodiscard]] TickIndex NextTick() const;
+        [[nodiscard]] StackRunOutcome LastOutcome() const;
+        [[nodiscard]] bool IsTerminal() const;
+        [[nodiscard]] RuntimeChunk Save() const;
+
+        [[nodiscard]] FrameRunResult RunForTicks(TickIndex tickCount);
+
+    private:
+        [[nodiscard]] static FrameRegistry BuildRegistry();
+        [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
+
+        StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
+        TickIndex nextTick_ = 0;
+        StackRunOutcome lastOutcome_ = StackRunOutcome::Continue;
+        FrameRegistry registry_;
+        Blackboard blackboard_;
+        Mailbox mailbox_;
+        std::vector<ScheduledMessage> scheduledMessages_;
+        std::vector<StackFrameChunkEntry> stack_;
+    };
+
     class StackFrameRuntime
     {
     public:
@@ -264,9 +361,6 @@ namespace dragongod
             StackScriptScenario scenario,
             TickIndex tickCount,
             const RuntimeMailboxInput& mailboxInput) const;
-
-    private:
-        [[nodiscard]] static FrameRegistry BuildRegistry();
     };
 
     template <typename T>
