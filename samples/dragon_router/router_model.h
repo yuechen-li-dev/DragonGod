@@ -1,20 +1,107 @@
 #pragma once
 
-#include "../../src/DragonGod/runtime_compat.h"
+#include <string>
+#include <vector>
 
 namespace dragongod_samples::dragon_router
 {
-    struct RouterSampleConfig
+    struct Packet
     {
-        dragongod::TickIndex tickBudget = 4;
+        int packetId = 0;
+        int destinationId = 0;
+        int ingressPort = 0;
+        int priority = 0;
+        int sizeBytes = 0;
+
+        [[nodiscard]] bool operator==(const Packet& other) const = default;
     };
 
-    struct RouterSampleSmokeResult
+    struct RouteEntry
     {
-        dragongod::StackRunOutcome outcome = dragongod::StackRunOutcome::Continue;
-        dragongod::TickIndex executedTicks = 0;
+        int destinationId = 0;
+        int egressPort = 0;
+        bool healthy = true;
+
+        [[nodiscard]] bool operator==(const RouteEntry& other) const = default;
     };
 
-    [[nodiscard]] RouterSampleSmokeResult RunRouterSampleSmoke(const RouterSampleConfig& config);
-    [[nodiscard]] bool RouterSampleSmokeSucceeded(const RouterSampleSmokeResult& result);
+    struct PortState
+    {
+        int portId = 0;
+        bool linkUp = true;
+        bool queueFull = false;
+
+        [[nodiscard]] bool operator==(const PortState& other) const = default;
+    };
+
+    struct QueueEntry
+    {
+        Packet packet{};
+        int targetPort = 0;
+
+        [[nodiscard]] bool operator==(const QueueEntry& other) const = default;
+    };
+
+    struct RouterState
+    {
+        std::vector<RouteEntry> routes;
+        std::vector<PortState> ports;
+        std::vector<QueueEntry> queuedPackets;
+        int forwardedCount = 0;
+        int droppedCount = 0;
+        int queuedCount = 0;
+
+        [[nodiscard]] bool operator==(const RouterState& other) const = default;
+    };
+
+    enum class PacketOutcomeKind
+    {
+        Forwarded,
+        Dropped,
+        Queued
+    };
+
+    enum class ActuationKind
+    {
+        ForwardPort,
+        DropPacket,
+        QueuePacket
+    };
+
+    struct Actuation
+    {
+        ActuationKind kind = ActuationKind::DropPacket;
+        int packetId = 0;
+        int portId = -1;
+        std::string reason;
+
+        [[nodiscard]] bool operator==(const Actuation& other) const = default;
+    };
+
+    struct PacketResult
+    {
+        int packetId = 0;
+        PacketOutcomeKind outcome = PacketOutcomeKind::Dropped;
+        int selectedPort = -1;
+
+        [[nodiscard]] bool operator==(const PacketResult& other) const = default;
+    };
+
+    struct RouterRunOutput
+    {
+        RouterState finalState{};
+        std::vector<PacketResult> packetResults;
+        std::vector<Actuation> actuation;
+        std::vector<std::string> trace;
+
+        [[nodiscard]] bool operator==(const RouterRunOutput& other) const = default;
+    };
+
+    [[nodiscard]] const RouteEntry* FindRoute(const RouterState& state, int destinationId);
+    [[nodiscard]] const PortState* FindPort(const RouterState& state, int portId);
+    [[nodiscard]] bool ShouldQueuePacket(const PortState& port);
+
+    [[nodiscard]] RouterRunOutput RunRouterGoldenPath(
+        const RouterState& initialState,
+        const std::vector<Packet>& incomingPackets);
 }
