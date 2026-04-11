@@ -88,6 +88,16 @@ If popping/completing empties the stack, runtime outcome becomes `Completed`.
 - `Failed` is terminal immediately.
 - `Completed` is terminal **only when pending deferred actuation queue is empty**.
 
+Drain-period behavior (important operational detail):
+
+- if stack logic has already completed and stack is empty, but deferred actuation is still pending, runtime still executes ticks.
+- those ticks still produce normal per-tick artifacts (`tickTrace`, `actuationByTick`, mailbox snapshot, dirty snapshot).
+- newly matured deferred requests can still emit during this drain period.
+- no frame function executes during drain ticks because stack is empty.
+- `IsTerminal()` remains false until pending deferred actuation is empty.
+
+This is why extra tick entries can appear after the logical "frame work is done" moment: those ticks are deferred-actuation drain ticks, not hidden frame re-entry.
+
 Calling `RunForTicks(...)` on an already-terminal `StackFrameRuntimeSession`:
 
 - the run loop exits immediately (no call to `RunSingleTick` succeeds),
@@ -129,6 +139,12 @@ Concrete examples (current implementation behavior):
   - tick N+1: still waiting (no frame function call).
   - tick N+2: frame runs again at `pc = X`.
 
+- `WaitTicks(0, X)` (edge case, current behavior):
+  - tick N: frame returns wait with `resumePc = X`.
+  - tick N+1: frame runs again at `pc = X`.
+  - operationally, this behaves like "resume next tick" (same practical wait span as `WaitTicks(1, X)` in authored flows).
+  - authoring guidance: do not use `WaitTicks(0, ...)` as a meaningful delay primitive; use `Continue(...)` when you do not intend a real wait.
+
 `Replace(...)` timing detail mirrors `Push(...)` timing:
 
 - tick N executes current top frame and receives `Replace(target)`.
@@ -157,6 +173,10 @@ Dirty semantics:
 - writes during that tick accumulate unique dirty slots
 - tick traces and run results expose per-tick dirty slot snapshots
 - snapshot (`Save`) persists dirty slots from the **most recently completed tick**
+- `ctx.Bb()` is access to the real session blackboard state, not a per-call copy
+- multiple `Set(...)` calls in one tick all mutate that same shared state immediately
+- if the same slot is written multiple times in one tick, final value wins for persisted state
+- dirty tracking is slot-presence for that tick window (written or not), not write-count multiplicity
 
 ### Do / do-not guidance
 
@@ -295,6 +315,13 @@ Decision behavior:
 5. updates utility memory (`committed`, `age`)
 6. returns `Push(chosen, ctx.Pc())`
 7. emits per-decision trace (`UtilityDecisionTraceEntry`)
+
+Score-clamp consequence (author-facing):
+
+- out-of-range consideration returns are silently clamped to `[0,1]`.
+- runtime does not treat this as an error or warning.
+- treat `[0,1]` as a hard authoring contract for predictable decisions.
+- clamp is a defensive safety net, not a signal that `2.0` or `-1.0` has extra meaning.
 
 `Dg::Decide(...)` timing and resume semantics in current runtime:
 
