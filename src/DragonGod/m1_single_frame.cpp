@@ -335,6 +335,36 @@ namespace dragongod
         });
     }
 
+    [[nodiscard]] const std::vector<std::uint32_t>& Blackboard::DirtySlots() const
+    {
+        return dirtySlots_;
+    }
+
+    void Blackboard::ClearDirty()
+    {
+        dirtySlots_.clear();
+    }
+
+    void Blackboard::MarkDirty(std::uint32_t slot)
+    {
+        if (HasDirtySlot(slot)) {
+            return;
+        }
+
+        dirtySlots_.push_back(slot);
+    }
+
+    [[nodiscard]] bool Blackboard::HasDirtySlot(std::uint32_t slot) const
+    {
+        for (const std::uint32_t dirtySlot : dirtySlots_) {
+            if (dirtySlot == slot) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void FrameRegistry::Add(FrameId id, FrameFn function)
     {
         definitions_.push_back(FrameDef{
@@ -422,6 +452,14 @@ namespace dragongod
         stack.push_back(FrameInstance{ .id = ScenarioRootFrame(scenario) });
 
         for (TickIndex tick = 0; tick < tickCount; ++tick) {
+            // M2b rule: dirty slots always represent writes performed in the current tick only.
+            // They are cleared at the start of each tick before any frame executes.
+            blackboard.ClearDirty();
+
+            const auto recordDirtyTick = [&result, &blackboard]() {
+                result.dirtySlotsByTick.push_back(blackboard.DirtySlots());
+            };
+
             if (stack.empty()) {
                 result.finalOutcome = StackRunOutcome::Completed;
                 break;
@@ -439,6 +477,7 @@ namespace dragongod
                 --frame.remainingWaitTicks;
                 EmitTrace(result, tick, FrameTraceKind::Step, frame, FrameControlKind::Wait, frame.id, stack.size());
                 result.finalOutcome = StackRunOutcome::Wait;
+                recordDirtyTick();
                 continue;
             }
 
@@ -448,6 +487,7 @@ namespace dragongod
                 EmitTrace(result, tick, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
                 EmitTrace(result, tick, FrameTraceKind::TerminalFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
                 result.finalOutcome = StackRunOutcome::Failed;
+                recordDirtyTick();
                 break;
             }
 
@@ -457,6 +497,7 @@ namespace dragongod
             if (control.kind == FrameControlKind::Continue) {
                 frame.pc = control.resumePc;
                 result.finalOutcome = StackRunOutcome::Continue;
+                recordDirtyTick();
                 continue;
             }
 
@@ -468,6 +509,7 @@ namespace dragongod
                     frame.remainingWaitTicks = 0;
                 }
                 result.finalOutcome = StackRunOutcome::Wait;
+                recordDirtyTick();
                 continue;
             }
 
@@ -476,6 +518,7 @@ namespace dragongod
                 EmitTrace(result, tick, FrameTraceKind::Push, frame, control.kind, control.target, stack.size());
                 stack.push_back(FrameInstance{ .id = control.target });
                 result.finalOutcome = StackRunOutcome::Continue;
+                recordDirtyTick();
                 continue;
             }
 
@@ -486,6 +529,7 @@ namespace dragongod
                 stack.pop_back();
                 stack.push_back(FrameInstance{ .id = control.target });
                 result.finalOutcome = StackRunOutcome::Continue;
+                recordDirtyTick();
                 continue;
             }
 
@@ -499,10 +543,12 @@ namespace dragongod
                 if (stack.empty()) {
                     result.finalOutcome = StackRunOutcome::Completed;
                     EmitTrace(result, tick, FrameTraceKind::TerminalCompleted, completedFrame, control.kind, completedFrame.id, 0);
+                    recordDirtyTick();
                     break;
                 }
 
                 result.finalOutcome = StackRunOutcome::Continue;
+                recordDirtyTick();
                 continue;
             }
 
@@ -511,6 +557,7 @@ namespace dragongod
             EmitTrace(result, tick, FrameTraceKind::ExitFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
             EmitTrace(result, tick, FrameTraceKind::TerminalFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
             result.finalOutcome = StackRunOutcome::Failed;
+            recordDirtyTick();
             break;
         }
 

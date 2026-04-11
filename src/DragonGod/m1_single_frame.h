@@ -91,6 +91,12 @@ namespace dragongod
         template <typename T>
         [[nodiscard]] T GetOr(BbKey<T> key, const T& fallback) const;
 
+        template <typename T>
+        [[nodiscard]] bool IsDirty(BbKey<T> key) const;
+
+        [[nodiscard]] const std::vector<std::uint32_t>& DirtySlots() const;
+        void ClearDirty();
+
     private:
         struct BoolEntry
         {
@@ -110,8 +116,12 @@ namespace dragongod
         template <typename T>
         void UpsertValue(std::uint32_t slot, const T& value);
 
+        void MarkDirty(std::uint32_t slot);
+        [[nodiscard]] bool HasDirtySlot(std::uint32_t slot) const;
+
         std::vector<BoolEntry> boolEntries_;
         std::vector<IntEntry> intEntries_;
+        std::vector<std::uint32_t> dirtySlots_;
     };
 
     struct FrameControl
@@ -188,6 +198,7 @@ namespace dragongod
     {
         StackRunOutcome finalOutcome = StackRunOutcome::Continue;
         std::vector<FrameTraceEvent> trace;
+        std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
     };
 
     class StackFrameRuntime
@@ -204,6 +215,7 @@ namespace dragongod
     {
         static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
         UpsertValue<T>(key.slot, value);
+        MarkDirty(key.slot);
     }
 
     template <typename T>
@@ -229,5 +241,12 @@ namespace dragongod
         }
 
         return *found;
+    }
+
+    template <typename T>
+    [[nodiscard]] bool Blackboard::IsDirty(BbKey<T> key) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        return HasDirtySlot(key.slot);
     }
 }
