@@ -74,10 +74,10 @@ Per tick, runtime operates on the current top stack frame:
 
 - `Continue(resumePc)`: frame remains active; `pc` becomes `resumePc`.
 - `Stay()`: frame remains active; `pc` remains unchanged.
-- `WaitTicks(ticks, resumePc)`: `pc` set to `resumePc`; frame waits across ticks using `remainingWaitTicks` countdown.
+- `WaitTicks(ticks, resumePc)`: `pc` is set to `resumePc` immediately, and frame execution is skipped for the requested wait window before that `pc` runs again.
 - `Push(target, resumePc)`: parent `pc` set to `resumePc`; child frame is pushed immediately onto stack, but executes on the next tick (runtime executes one top frame per tick).
 - `Pop()`: current frame exits completed; parent resumes next tick.
-- `Replace(target)`: top frame replaced atomically with new frame.
+- `Replace(target)`: top frame replaced atomically with new frame during the current tick; replacement frame first executes on the next tick.
 - `Complete()`: equivalent terminal-complete exit for current frame (pops it).
 - `Fail(reason)`: frame exits failed and runtime becomes terminal failed.
 
@@ -88,12 +88,22 @@ If popping/completing empties the stack, runtime outcome becomes `Completed`.
 - `Failed` is terminal immediately.
 - `Completed` is terminal **only when pending deferred actuation queue is empty**.
 
+Calling `RunForTicks(...)` on an already-terminal `StackFrameRuntimeSession`:
+
+- the run loop exits immediately (no call to `RunSingleTick` succeeds),
+- zero new ticks execute,
+- per-tick outputs for that call (`tickTrace`, `trace`, `dirtySlotsByTick`, `visibleMailboxByTick`, `actuationByTick`) are empty,
+- `finalOutcome` remains the already-terminal outcome and `finalBlackboard` is returned as-is.
+
+Interpret this as “no advancement occurred,” not as silent progression.
+
 ### Do / do-not guidance
 
 - Do model subroutines as child frames via `Push` + child `Pop`.
 - Do use `Replace` when abandoning current frame state is desired.
 - Do not treat `Wait` as terminal.
 - Do not assume completion ends runtime if deferred actuation is still pending.
+- Do not read empty per-call results from an already-terminal session as hidden execution.
 
 Push timing detail in the current top-of-stack model:
 
@@ -101,6 +111,29 @@ Push timing detail in the current top-of-stack model:
 - if control is `Push`, parent frame `pc` is updated to push `resumePc` during tick N, and the child is appended to stack during tick N.
 - tick N+1 then executes that child (now top of stack).
 - after child `Pop()`/`Complete()`, parent resumes on a later tick from the stored resume `pc`.
+
+
+`WaitTicks(...)` timing detail in observable author terms:
+
+- `N` means “wait for N tick boundaries before this frame runs again.”
+- `WaitTicks(N, resumePc)` stores `resumePc` now, and runtime resumes frame execution at that `pc` after N ticks have passed.
+- Internally, runtime stores `remainingWaitTicks = N - 1` when `N > 0`, then decrements once per tick while returning `Wait`.
+
+Concrete examples (current implementation behavior):
+
+- `WaitTicks(1, X)`:
+  - tick N: frame returns wait; no second frame execution that tick.
+  - tick N+1: frame runs again at `pc = X`.
+- `WaitTicks(2, X)`:
+  - tick N: frame returns wait.
+  - tick N+1: still waiting (no frame function call).
+  - tick N+2: frame runs again at `pc = X`.
+
+`Replace(...)` timing detail mirrors `Push(...)` timing:
+
+- tick N executes current top frame and receives `Replace(target)`.
+- runtime swaps the top-of-stack entry to `target` during tick N.
+- tick N+1 is the first tick that actually invokes the replacement frame function.
 
 ---
 
@@ -365,7 +398,19 @@ Per-tick deterministic surfaces:
 - `actuationByTick`: emitted actuation requests per executed tick.
   - assert this when validating immediate/deferred effect timing.
 - `visibleMailboxByTick` and `dirtySlotsByTick`:
-  - assert these when mailbox staging or blackboard write timing is the behavior under test.
+  - convenience per-tick projections of mailbox/dirty data also present inside each `tickTrace` entry.
+  - assert these when mailbox staging or blackboard write timing is the only behavior under test and you want narrower assertions.
+
+Relationship between these surfaces (current implementation):
+
+- `tickTrace[i].visibleMailbox` and `visibleMailboxByTick[i]` are captured from the same tick-time mailbox snapshot.
+- `tickTrace[i].dirtySlots` and `dirtySlotsByTick[i]` are captured from the same tick-time dirty-slot snapshot.
+- so these are not independent alternate truths; they are convenience slices of the same per-tick runtime evidence.
+
+Practical test-author choice:
+
+- prefer `tickTrace` for full deterministic replay assertions or multi-surface timing checks.
+- prefer `visibleMailboxByTick` / `dirtySlotsByTick` for focused mailbox/dirty expectations where full trace matching would add noise.
 
 Lower-level/raw trace surface:
 
@@ -396,6 +441,18 @@ Where it is not surfaced today:
 - `FrameRunResult` final outcome does not carry a fail-reason field.
 
 So high-level trace/replay surfaces expose that a failure happened, but not the integer reason code.
+
+
+Unregistered frame failure behavior (current runtime truth):
+
+- if control flow lands on a frame id that is not present in `BuildFrameRegistry()`, `registry.Find(...)` returns null,
+- runtime treats that as terminal failure for the active tick (not a soft no-op),
+- event trace emits failed-exit/terminal-failed markers for that tick,
+- per-tick `tickTrace` entry for that tick records failed outcome, and run `finalOutcome` is `Failed`.
+
+Debugging hint:
+
+- if you hit terminal failure and no authored `Dg::Fail(reason)` path explains it, verify frame registration first (especially after adding/changing `Push(...)` or `Replace(...)` targets).
 
 ---
 
