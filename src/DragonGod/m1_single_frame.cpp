@@ -80,6 +80,99 @@ namespace dragongod
         std::vector<Entry> entries_;
     };
 
+    class ActRuntime
+    {
+    public:
+        ActRuntime() = default;
+
+        void BeginTick(TickIndex tick)
+        {
+            currentTick_ = tick;
+            emittedNow_.clear();
+        }
+
+        void EmitImmediate(ActId id)
+        {
+            emittedNow_.push_back(ActRequest{
+                .id = id,
+                .deferred = false,
+                .emittedTick = currentTick_,
+                .dueTick = currentTick_,
+                .delayTicks = 0
+            });
+        }
+
+        void ScheduleDeferred(ActId id, std::uint32_t delayTicks)
+        {
+            pending_.push_back(ActRequest{
+                .id = id,
+                .deferred = true,
+                .emittedTick = currentTick_,
+                .dueTick = currentTick_ + static_cast<TickIndex>(delayTicks),
+                .delayTicks = delayTicks
+            });
+        }
+
+        void FlushMatured()
+        {
+            std::vector<ActRequest> stillPending;
+            for (const ActRequest& request : pending_) {
+                if (request.dueTick <= currentTick_) {
+                    emittedNow_.push_back(request);
+                } else {
+                    stillPending.push_back(request);
+                }
+            }
+
+            pending_ = stillPending;
+        }
+
+        [[nodiscard]] const std::vector<ActRequest>& EmittedNow() const
+        {
+            return emittedNow_;
+        }
+
+        [[nodiscard]] const std::vector<ActRequest>& Pending() const
+        {
+            return pending_;
+        }
+
+        [[nodiscard]] std::vector<DeferredActChunkEntry> ExportDeferredChunk() const
+        {
+            std::vector<DeferredActChunkEntry> chunk;
+            for (const ActRequest& request : pending_) {
+                chunk.push_back(DeferredActChunkEntry{
+                    .id = request.id,
+                    .dueTick = request.dueTick,
+                    .emittedTick = request.emittedTick,
+                    .delayTicks = request.delayTicks
+                });
+            }
+
+            return chunk;
+        }
+
+        void ImportDeferredChunk(const std::vector<DeferredActChunkEntry>& chunk)
+        {
+            pending_.clear();
+            emittedNow_.clear();
+            for (const DeferredActChunkEntry& entry : chunk) {
+                pending_.push_back(ActRequest{
+                    .id = entry.id,
+                    .deferred = true,
+                    .emittedTick = entry.emittedTick,
+                    .dueTick = entry.dueTick,
+                    .delayTicks = entry.delayTicks
+                });
+            }
+        }
+
+    private:
+        TickIndex currentTick_ = 0;
+        std::vector<ActRequest> emittedNow_;
+        std::vector<ActRequest> pending_;
+    };
+
     namespace
     {
         [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario)
@@ -152,6 +245,22 @@ namespace dragongod
                 return FrameId::RootUtilityTieBreakLastListed;
             }
 
+            if (scenario == StackScriptScenario::ActImmediateDeferredComplete) {
+                return FrameId::RootActImmediateDeferred;
+            }
+
+            if (scenario == StackScriptScenario::ActOrderedDeferredComplete) {
+                return FrameId::RootActOrderedDeferred;
+            }
+
+            if (scenario == StackScriptScenario::ActParentPushChildComplete) {
+                return FrameId::RootActParentPushChild;
+            }
+
+            if (scenario == StackScriptScenario::ActUtilityDrivenComplete) {
+                return FrameId::RootActUtilityDriven;
+            }
+
             return FrameId::RootContinueThenComplete;
         }
 
@@ -181,7 +290,9 @@ namespace dragongod
             const std::vector<StackFrameChunkEntry>& stack,
             const std::vector<std::uint32_t>& dirtySlots,
             const std::vector<Message>& visibleMailbox,
-            const std::vector<UtilityDecisionTraceEntry>& utilityDecisions)
+            const std::vector<UtilityDecisionTraceEntry>& utilityDecisions,
+            const std::vector<ActRequest>& emittedActuation,
+            const std::vector<ActRequest>& pendingDeferredActuation)
         {
             return TickTraceEntry{
                 .tick = tick,
@@ -189,7 +300,9 @@ namespace dragongod
                 .stack = stack,
                 .dirtySlots = dirtySlots,
                 .visibleMailbox = visibleMailbox,
-                .utilityDecisions = utilityDecisions
+                .utilityDecisions = utilityDecisions,
+                .emittedActuation = emittedActuation,
+                .pendingDeferredActuation = pendingDeferredActuation
             };
         }
 
@@ -222,6 +335,7 @@ namespace dragongod
                 constexpr BbKey<int> LowAmmoScore{ .name = "LowAmmoScore", .slot = 9 };
                 constexpr BbKey<int> UtilityChoice{ .name = "UtilityChoice", .slot = 10 };
                 constexpr BbKey<int> UtilityDecisionsMade{ .name = "UtilityDecisionsMade", .slot = 11 };
+                constexpr BbKey<bool> ActMailboxSeen{ .name = "ActMailboxSeen", .slot = 12 };
             }
 
             [[nodiscard]] FrameControl RootPushChild(FrameCtx& ctx)
@@ -710,7 +824,114 @@ namespace dragongod
                     return Dg::Fail(508);
                 }
             }
+
+            [[nodiscard]] FrameControl RootActImmediateDeferred(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Act().Immediate(ActId::PlayBark);
+                    return Dg::WaitTicks(2, 1);
+                case 1:
+                    ctx.Act().Deferred(ActId::RaiseAlarm, 3);
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(700);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootActOrderedDeferred(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Act().Immediate(ActId::OpenDoor);
+                    ctx.Act().Deferred(ActId::PlayBark, 2);
+                    ctx.Act().Deferred(ActId::RaiseAlarm, 2);
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(701);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootActParentPushChild(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Act().Immediate(ActId::OpenDoor);
+                    if (ctx.Mb().ConsumeFront(message)) {
+                        ctx.Bb().Set(Keys::ActMailboxSeen, true);
+                    }
+
+                    ctx.Bb().Set(Keys::Counter, 1);
+                    return Dg::Push(FrameId::ChildActImmediate, 1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::Counter, 0) != 2) {
+                        return Dg::Fail(702);
+                    }
+
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(703);
+                }
+            }
+
+            [[nodiscard]] FrameControl ChildActImmediate(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Act().Immediate(ActId::PlayBark);
+                    ctx.Bb().Set(Keys::Counter, 2);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(704);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootActUtilityDriven(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 80);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 20);
+                    return Dg::Continue(1);
+                case 1:
+                    if (When::Alerted(ctx) >= When::LowAmmo(ctx)) {
+                        ctx.Act().Immediate(ActId::UtilityCombat);
+                    } else {
+                        ctx.Act().Immediate(ActId::UtilityReload);
+                    }
+
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(705);
+                }
+            }
         }
+    }
+
+    ActCtx::ActCtx() = default;
+
+    ActCtx::ActCtx(ActRuntime& runtime)
+        : runtime_(&runtime)
+    {
+    }
+
+    void ActCtx::Immediate(ActId id)
+    {
+        if (runtime_ == nullptr) {
+            return;
+        }
+
+        runtime_->EmitImmediate(id);
+    }
+
+    void ActCtx::Deferred(ActId id, std::uint32_t delayTicks)
+    {
+        if (runtime_ == nullptr) {
+            return;
+        }
+
+        runtime_->ScheduleDeferred(id, delayTicks);
     }
 
     FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard)
@@ -739,6 +960,7 @@ namespace dragongod
         bool entered,
         Blackboard& blackboard,
         Mailbox& mailbox,
+        ActRuntime& actRuntime,
         UtilityMemoryStore& utilityMemory,
         std::vector<UtilityDecisionTraceEntry>& utilityTrace)
         : frameId_(frameId)
@@ -747,6 +969,7 @@ namespace dragongod
         , entered_(entered)
         , blackboard_(&blackboard)
         , mailbox_(&mailbox)
+        , act_(actRuntime)
         , utilityMemory_(&utilityMemory)
         , utilityTrace_(&utilityTrace)
     {
@@ -790,6 +1013,16 @@ namespace dragongod
     [[nodiscard]] const Mailbox& FrameCtx::Mb() const
     {
         return *mailbox_;
+    }
+
+    [[nodiscard]] ActCtx& FrameCtx::Act()
+    {
+        return act_;
+    }
+
+    [[nodiscard]] const ActCtx& FrameCtx::Act() const
+    {
+        return act_;
     }
 
     [[nodiscard]] std::uint32_t FrameCtx::ReadUtilityCommitAge(FrameId frameId) const
@@ -1230,8 +1463,9 @@ namespace dragongod
         const RuntimeMailboxInput& mailboxInput)
         : scenario_(scenario)
         , registry_(BuildRegistry())
-        , utilityMemory_(new UtilityMemoryStore())
         , scheduledMessages_(mailboxInput.scheduledMessages)
+        , actRuntime_(new ActRuntime())
+        , utilityMemory_(new UtilityMemoryStore())
     {
         stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
         for (const Message& message : mailboxInput.initialMessages) {
@@ -1244,9 +1478,11 @@ namespace dragongod
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
         , registry_(BuildRegistry())
+        , actRuntime_(new ActRuntime())
         , utilityMemory_(new UtilityMemoryStore())
     {
         stack_ = chunk.stack.frames;
+        actRuntime_->ImportDeferredChunk(chunk.deferredActuation);
         utilityMemory_->ImportChunk(chunk.utilityMemory);
         blackboard_.ImportChunk(chunk.blackboard);
         mailbox_.ImportChunk(chunk.mailbox);
@@ -1255,6 +1491,8 @@ namespace dragongod
 
     StackFrameRuntimeSession::~StackFrameRuntimeSession()
     {
+        delete actRuntime_;
+        actRuntime_ = nullptr;
         delete utilityMemory_;
         utilityMemory_ = nullptr;
     }
@@ -1271,7 +1509,19 @@ namespace dragongod
 
     [[nodiscard]] bool StackFrameRuntimeSession::IsTerminal() const
     {
-        return lastOutcome_ == StackRunOutcome::Completed || lastOutcome_ == StackRunOutcome::Failed;
+        if (lastOutcome_ == StackRunOutcome::Failed) {
+            return true;
+        }
+
+        if (lastOutcome_ == StackRunOutcome::Completed) {
+            if (actRuntime_ == nullptr) {
+                return true;
+            }
+
+            return actRuntime_->Pending().empty();
+        }
+
+        return false;
     }
 
     [[nodiscard]] RuntimeChunk StackFrameRuntimeSession::Save() const
@@ -1285,6 +1535,7 @@ namespace dragongod
             .scheduledMessages = scheduledMessages_,
             .stack = StackChunk{ .frames = stack_ },
             .utilityMemory = utilityMemory_->ExportChunk(),
+            .deferredActuation = actRuntime_->ExportDeferredChunk(),
             .blackboard = blackboard_.ExportChunk(),
             .mailbox = mailbox_.ExportChunk()
         };
@@ -1322,12 +1573,26 @@ namespace dragongod
         }
 
         mailbox_.BeginTick();
+        actRuntime_->BeginTick(nextTick_);
+        actRuntime_->FlushMatured();
         result.visibleMailboxByTick.push_back(mailbox_.VisibleMessages());
         std::vector<UtilityDecisionTraceEntry> tickUtilityDecisions;
 
         if (stack_.empty()) {
             lastOutcome_ = StackRunOutcome::Completed;
-            return false;
+            result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            result.actuationByTick.push_back(actRuntime_->EmittedNow());
+            result.tickTrace.push_back(MakeTickTraceEntry(
+                nextTick_,
+                lastOutcome_,
+                stack_,
+                blackboard_.DirtySlots(),
+                mailbox_.VisibleMessages(),
+                tickUtilityDecisions,
+                actRuntime_->EmittedNow(),
+                actRuntime_->Pending()));
+            ++nextTick_;
+            return !IsTerminal();
         }
 
         StackFrameChunkEntry& frame = stack_.back();
@@ -1343,31 +1608,37 @@ namespace dragongod
             EmitTrace(result, nextTick_, FrameTraceKind::Step, frame, FrameControlKind::Wait, frame.id, stack_.size());
             lastOutcome_ = StackRunOutcome::Wait;
             result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            result.actuationByTick.push_back(actRuntime_->EmittedNow());
             result.tickTrace.push_back(MakeTickTraceEntry(
                 nextTick_,
                 lastOutcome_,
                 stack_,
                 blackboard_.DirtySlots(),
                 mailbox_.VisibleMessages(),
-                tickUtilityDecisions));
+                tickUtilityDecisions,
+                actRuntime_->EmittedNow(),
+                actRuntime_->Pending()));
             ++nextTick_;
             return true;
         }
 
-        FrameCtx ctx(frame.id, nextTick_, frame.pc, frame.entered, blackboard_, mailbox_, *utilityMemory_, tickUtilityDecisions);
+        FrameCtx ctx(frame.id, nextTick_, frame.pc, frame.entered, blackboard_, mailbox_, *actRuntime_, *utilityMemory_, tickUtilityDecisions);
         const FrameFn frameFunction = registry_.Find(frame.id);
         if (frameFunction == nullptr) {
             EmitTrace(result, nextTick_, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
             EmitTrace(result, nextTick_, FrameTraceKind::TerminalFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
             lastOutcome_ = StackRunOutcome::Failed;
             result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            result.actuationByTick.push_back(actRuntime_->EmittedNow());
             result.tickTrace.push_back(MakeTickTraceEntry(
                 nextTick_,
                 lastOutcome_,
                 stack_,
                 blackboard_.DirtySlots(),
                 mailbox_.VisibleMessages(),
-                tickUtilityDecisions));
+                tickUtilityDecisions,
+                actRuntime_->EmittedNow(),
+                actRuntime_->Pending()));
             ++nextTick_;
             return false;
         }
@@ -1416,13 +1687,16 @@ namespace dragongod
         }
 
         result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+        result.actuationByTick.push_back(actRuntime_->EmittedNow());
         result.tickTrace.push_back(MakeTickTraceEntry(
             nextTick_,
             lastOutcome_,
             stack_,
             blackboard_.DirtySlots(),
             mailbox_.VisibleMessages(),
-            tickUtilityDecisions));
+            tickUtilityDecisions,
+            actRuntime_->EmittedNow(),
+            actRuntime_->Pending()));
         ++nextTick_;
         return !IsTerminal();
     }
@@ -1457,6 +1731,11 @@ namespace dragongod
         registry.Add(FrameId::UtilityActionCombat, &nodes::UtilityActionCombat);
         registry.Add(FrameId::UtilityActionReload, &nodes::UtilityActionReload);
         registry.Add(FrameId::UtilityActionPatrol, &nodes::UtilityActionPatrol);
+        registry.Add(FrameId::RootActImmediateDeferred, &nodes::RootActImmediateDeferred);
+        registry.Add(FrameId::RootActOrderedDeferred, &nodes::RootActOrderedDeferred);
+        registry.Add(FrameId::RootActParentPushChild, &nodes::RootActParentPushChild);
+        registry.Add(FrameId::ChildActImmediate, &nodes::ChildActImmediate);
+        registry.Add(FrameId::RootActUtilityDriven, &nodes::RootActUtilityDriven);
         return registry;
     }
 
@@ -1544,6 +1823,30 @@ namespace dragongod
                     line += ";";
                 }
                 line += "]";
+            }
+
+            line += "|act=";
+            for (const ActRequest& request : entry.emittedActuation) {
+                line += std::to_string(static_cast<int>(request.id));
+                line += ",";
+                line += request.deferred ? "d" : "i";
+                line += ",";
+                line += std::to_string(request.emittedTick);
+                line += ",";
+                line += std::to_string(request.dueTick);
+                line += ",";
+                line += std::to_string(request.delayTicks);
+                line += ";";
+            }
+
+            line += "|pendingAct=";
+            for (const ActRequest& request : entry.pendingDeferredActuation) {
+                line += std::to_string(static_cast<int>(request.id));
+                line += ",";
+                line += std::to_string(request.dueTick);
+                line += ",";
+                line += std::to_string(request.delayTicks);
+                line += ";";
             }
 
             serialized.push_back(line);

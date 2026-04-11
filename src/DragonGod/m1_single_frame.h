@@ -48,7 +48,12 @@ namespace dragongod
         RootUtilityTieBreakLastListed,
         UtilityActionCombat,
         UtilityActionReload,
-        UtilityActionPatrol
+        UtilityActionPatrol,
+        RootActImmediateDeferred,
+        RootActOrderedDeferred,
+        RootActParentPushChild,
+        ChildActImmediate,
+        RootActUtilityDriven
     };
 
     enum class FrameControlKind
@@ -95,7 +100,55 @@ namespace dragongod
         UtilityMinCommitComplete,
         UtilityTieBreakKeepCurrentComplete,
         UtilityTieBreakFirstListedComplete,
-        UtilityTieBreakLastListedComplete
+        UtilityTieBreakLastListedComplete,
+        ActImmediateDeferredComplete,
+        ActOrderedDeferredComplete,
+        ActParentPushChildComplete,
+        ActUtilityDrivenComplete
+    };
+
+    enum class ActId
+    {
+        PlayBark,
+        RaiseAlarm,
+        OpenDoor,
+        UtilityCombat,
+        UtilityReload
+    };
+
+    struct ActRequest
+    {
+        ActId id = ActId::PlayBark;
+        bool deferred = false;
+        TickIndex emittedTick = 0;
+        TickIndex dueTick = 0;
+        std::uint32_t delayTicks = 0;
+
+        [[nodiscard]] bool operator==(const ActRequest& other) const = default;
+    };
+
+    struct DeferredActChunkEntry
+    {
+        ActId id = ActId::PlayBark;
+        TickIndex dueTick = 0;
+        TickIndex emittedTick = 0;
+        std::uint32_t delayTicks = 0;
+
+        [[nodiscard]] bool operator==(const DeferredActChunkEntry& other) const = default;
+    };
+
+    class ActRuntime;
+
+    class ActCtx
+    {
+    public:
+        ActCtx();
+        explicit ActCtx(ActRuntime& runtime);
+        void Immediate(ActId id);
+        void Deferred(ActId id, std::uint32_t delayTicks);
+
+    private:
+        ActRuntime* runtime_ = nullptr;
     };
 
     enum class MessageKind
@@ -289,6 +342,8 @@ namespace dragongod
         [[nodiscard]] const Blackboard& Bb() const;
         [[nodiscard]] Mailbox& Mb();
         [[nodiscard]] const Mailbox& Mb() const;
+        [[nodiscard]] ActCtx& Act();
+        [[nodiscard]] const ActCtx& Act() const;
         [[nodiscard]] std::uint32_t ReadUtilityCommitAge(FrameId frameId) const;
 
     private:
@@ -298,6 +353,7 @@ namespace dragongod
         bool entered_;
         Blackboard* blackboard_ = nullptr;
         Mailbox* mailbox_ = nullptr;
+        ActCtx act_;
         UtilityMemoryStore* utilityMemory_ = nullptr;
         std::vector<UtilityDecisionTraceEntry>* utilityTrace_ = nullptr;
 
@@ -308,6 +364,7 @@ namespace dragongod
             bool entered,
             Blackboard& blackboard,
             Mailbox& mailbox,
+            ActRuntime& actRuntime,
             UtilityMemoryStore& utilityMemory,
             std::vector<UtilityDecisionTraceEntry>& utilityTrace);
 
@@ -410,6 +467,8 @@ namespace dragongod
         std::vector<std::uint32_t> dirtySlots;
         std::vector<Message> visibleMailbox;
         std::vector<UtilityDecisionTraceEntry> utilityDecisions;
+        std::vector<ActRequest> emittedActuation;
+        std::vector<ActRequest> pendingDeferredActuation;
 
         [[nodiscard]] bool operator==(const TickTraceEntry& other) const = default;
     };
@@ -432,6 +491,7 @@ namespace dragongod
         std::vector<TickTraceEntry> tickTrace;
         std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
         std::vector<std::vector<Message>> visibleMailboxByTick;
+        std::vector<std::vector<ActRequest>> actuationByTick;
         Blackboard finalBlackboard;
     };
 
@@ -449,6 +509,7 @@ namespace dragongod
         std::vector<ScheduledMessage> scheduledMessages;
         StackChunk stack;
         std::vector<UtilityMemoryChunkEntry> utilityMemory;
+        std::vector<DeferredActChunkEntry> deferredActuation;
         Blackboard::Chunk blackboard;
         MailboxChunk mailbox;
 
@@ -481,6 +542,7 @@ namespace dragongod
         Mailbox mailbox_;
         std::vector<ScheduledMessage> scheduledMessages_;
         std::vector<StackFrameChunkEntry> stack_;
+        ActRuntime* actRuntime_ = nullptr;
         UtilityMemoryStore* utilityMemory_ = nullptr;
     };
 
