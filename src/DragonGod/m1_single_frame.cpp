@@ -4,14 +4,6 @@ namespace dragongod
 {
     namespace
     {
-        struct FrameInstance
-        {
-            FrameId id = FrameId::RootPushChild;
-            std::uint32_t pc = 0;
-            bool entered = false;
-            std::uint32_t remainingWaitTicks = 0;
-        };
-
         [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario)
         {
             if (scenario == StackScriptScenario::PushPopComplete) {
@@ -65,7 +57,7 @@ namespace dragongod
             FrameRunResult& result,
             TickIndex tick,
             FrameTraceKind kind,
-            const FrameInstance& active,
+            const StackFrameChunkEntry& active,
             FrameControlKind control,
             FrameId targetFrame,
             std::size_t stackDepth)
@@ -481,6 +473,25 @@ namespace dragongod
         return visible_;
     }
 
+    [[nodiscard]] const std::vector<Message>& Mailbox::StagedMessages() const
+    {
+        return staged_;
+    }
+
+    [[nodiscard]] MailboxChunk Mailbox::ExportChunk() const
+    {
+        return MailboxChunk{
+            .visibleMessages = visible_,
+            .stagedMessages = staged_
+        };
+    }
+
+    void Mailbox::ImportChunk(const MailboxChunk& chunk)
+    {
+        visible_ = chunk.visibleMessages;
+        staged_ = chunk.stagedMessages;
+    }
+
     template <>
     [[nodiscard]] const bool* Blackboard::FindValue<bool>(std::uint32_t slot) const
     {
@@ -545,6 +556,51 @@ namespace dragongod
     void Blackboard::ClearDirty()
     {
         dirtySlots_.clear();
+    }
+
+    [[nodiscard]] Blackboard::Chunk Blackboard::ExportChunk() const
+    {
+        Chunk chunk;
+
+        for (const BoolEntry& entry : boolEntries_) {
+            chunk.boolEntries.push_back(BoolChunkEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
+
+        for (const IntEntry& entry : intEntries_) {
+            chunk.intEntries.push_back(IntChunkEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
+
+        chunk.dirtySlots = dirtySlots_;
+        return chunk;
+    }
+
+    void Blackboard::ImportChunk(const Chunk& chunk)
+    {
+        boolEntries_.clear();
+        intEntries_.clear();
+        dirtySlots_.clear();
+
+        for (const BoolChunkEntry& entry : chunk.boolEntries) {
+            boolEntries_.push_back(BoolEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
+
+        for (const IntChunkEntry& entry : chunk.intEntries) {
+            intEntries_.push_back(IntEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
+
+        dirtySlots_ = chunk.dirtySlots;
     }
 
     void Blackboard::MarkDirty(std::uint32_t slot)
@@ -645,151 +701,177 @@ namespace dragongod
         }
     }
 
-    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const
+    StackFrameRuntimeSession::StackFrameRuntimeSession(
+        StackScriptScenario scenario,
+        const RuntimeMailboxInput& mailboxInput)
+        : scenario_(scenario)
+        , registry_(BuildRegistry())
+        , scheduledMessages_(mailboxInput.scheduledMessages)
     {
-        return RunForTicks(scenario, tickCount, RuntimeMailboxInput{});
+        stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
+        for (const Message& message : mailboxInput.initialMessages) {
+            mailbox_.Enqueue(message);
+        }
     }
 
-    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(
-        StackScriptScenario scenario,
-        TickIndex tickCount,
-        const RuntimeMailboxInput& mailboxInput) const
+    StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk)
+        : scenario_(chunk.scenario)
+        , nextTick_(chunk.nextTick)
+        , lastOutcome_(chunk.lastOutcome)
+        , registry_(BuildRegistry())
     {
-        const FrameRegistry registry = BuildRegistry();
+        stack_ = chunk.stack.frames;
+        blackboard_.ImportChunk(chunk.blackboard);
+        mailbox_.ImportChunk(chunk.mailbox);
+        scheduledMessages_ = chunk.scheduledMessages;
+    }
+
+    [[nodiscard]] TickIndex StackFrameRuntimeSession::NextTick() const
+    {
+        return nextTick_;
+    }
+
+    [[nodiscard]] StackRunOutcome StackFrameRuntimeSession::LastOutcome() const
+    {
+        return lastOutcome_;
+    }
+
+    [[nodiscard]] bool StackFrameRuntimeSession::IsTerminal() const
+    {
+        return lastOutcome_ == StackRunOutcome::Completed || lastOutcome_ == StackRunOutcome::Failed;
+    }
+
+    [[nodiscard]] RuntimeChunk StackFrameRuntimeSession::Save() const
+    {
+        // M4 persistence boundary:
+        // Save() is valid between ticks after all effects of tick N are complete and before tick N+1 starts.
+        return RuntimeChunk{
+            .scenario = scenario_,
+            .nextTick = nextTick_,
+            .lastOutcome = lastOutcome_,
+            .scheduledMessages = scheduledMessages_,
+            .stack = StackChunk{ .frames = stack_ },
+            .blackboard = blackboard_.ExportChunk(),
+            .mailbox = mailbox_.ExportChunk()
+        };
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntimeSession::RunForTicks(TickIndex tickCount)
+    {
         FrameRunResult result;
-        Blackboard blackboard;
-        Mailbox mailbox;
-        for (const Message& message : mailboxInput.initialMessages) {
-            mailbox.Enqueue(message);
-        }
-
-        std::vector<FrameInstance> stack;
-        stack.push_back(FrameInstance{ .id = ScenarioRootFrame(scenario) });
-
         for (TickIndex tick = 0; tick < tickCount; ++tick) {
-            // M2b rule: dirty slots always represent writes performed in the current tick only.
-            // They are cleared at the start of each tick before any frame executes.
-            blackboard.ClearDirty();
-
-            const auto recordDirtyTick = [&result, &blackboard]() {
-                result.dirtySlotsByTick.push_back(blackboard.DirtySlots());
-            };
-
-            for (const ScheduledMessage& scheduled : mailboxInput.scheduledMessages) {
-                if (scheduled.tick == tick) {
-                    mailbox.Enqueue(scheduled.message);
-                }
-            }
-
-            mailbox.BeginTick();
-            result.visibleMailboxByTick.push_back(mailbox.VisibleMessages());
-
-            if (stack.empty()) {
-                result.finalOutcome = StackRunOutcome::Completed;
+            if (!RunSingleTick(result)) {
                 break;
             }
-
-            FrameInstance& frame = stack.back();
-            EmitTrace(result, tick, FrameTraceKind::Tick, frame, FrameControlKind::Continue, frame.id, stack.size());
-
-            if (!frame.entered) {
-                frame.entered = true;
-                EmitTrace(result, tick, FrameTraceKind::Enter, frame, FrameControlKind::Continue, frame.id, stack.size());
-            }
-
-            if (frame.remainingWaitTicks > 0) {
-                --frame.remainingWaitTicks;
-                EmitTrace(result, tick, FrameTraceKind::Step, frame, FrameControlKind::Wait, frame.id, stack.size());
-                result.finalOutcome = StackRunOutcome::Wait;
-                recordDirtyTick();
-                continue;
-            }
-
-            FrameCtx ctx(frame.id, tick, frame.pc, frame.entered, blackboard, mailbox);
-            const FrameFn frameFunction = registry.Find(frame.id);
-            if (frameFunction == nullptr) {
-                EmitTrace(result, tick, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
-                EmitTrace(result, tick, FrameTraceKind::TerminalFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
-                result.finalOutcome = StackRunOutcome::Failed;
-                recordDirtyTick();
-                break;
-            }
-
-            const FrameControl control = frameFunction(ctx);
-            EmitTrace(result, tick, FrameTraceKind::Step, frame, control.kind, control.target, stack.size());
-
-            if (control.kind == FrameControlKind::Continue) {
-                frame.pc = control.resumePc;
-                result.finalOutcome = StackRunOutcome::Continue;
-                recordDirtyTick();
-                continue;
-            }
-
-            if (control.kind == FrameControlKind::Wait) {
-                frame.pc = control.resumePc;
-                if (control.waitTicks > 0) {
-                    frame.remainingWaitTicks = control.waitTicks - 1;
-                } else {
-                    frame.remainingWaitTicks = 0;
-                }
-                result.finalOutcome = StackRunOutcome::Wait;
-                recordDirtyTick();
-                continue;
-            }
-
-            if (control.kind == FrameControlKind::Push) {
-                frame.pc = control.resumePc;
-                EmitTrace(result, tick, FrameTraceKind::Push, frame, control.kind, control.target, stack.size());
-                stack.push_back(FrameInstance{ .id = control.target });
-                result.finalOutcome = StackRunOutcome::Continue;
-                recordDirtyTick();
-                continue;
-            }
-
-            if (control.kind == FrameControlKind::Replace) {
-                const std::size_t depthBeforeReplace = stack.size();
-                const FrameInstance replaced = frame;
-                EmitTrace(result, tick, FrameTraceKind::Replace, replaced, control.kind, control.target, depthBeforeReplace);
-                stack.pop_back();
-                stack.push_back(FrameInstance{ .id = control.target });
-                result.finalOutcome = StackRunOutcome::Continue;
-                recordDirtyTick();
-                continue;
-            }
-
-            if (control.kind == FrameControlKind::Pop || control.kind == FrameControlKind::Complete) {
-                const std::size_t depthBeforePop = stack.size();
-                const FrameInstance completedFrame = frame;
-                EmitTrace(result, tick, FrameTraceKind::ExitCompleted, completedFrame, control.kind, completedFrame.id, depthBeforePop);
-                stack.pop_back();
-                EmitTrace(result, tick, FrameTraceKind::Pop, completedFrame, control.kind, completedFrame.id, depthBeforePop);
-
-                if (stack.empty()) {
-                    result.finalOutcome = StackRunOutcome::Completed;
-                    EmitTrace(result, tick, FrameTraceKind::TerminalCompleted, completedFrame, control.kind, completedFrame.id, 0);
-                    recordDirtyTick();
-                    break;
-                }
-
-                result.finalOutcome = StackRunOutcome::Continue;
-                recordDirtyTick();
-                continue;
-            }
-
-            const std::size_t depthBeforeFail = stack.size();
-            const FrameInstance failedFrame = frame;
-            EmitTrace(result, tick, FrameTraceKind::ExitFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
-            EmitTrace(result, tick, FrameTraceKind::TerminalFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
-            result.finalOutcome = StackRunOutcome::Failed;
-            recordDirtyTick();
-            break;
         }
 
-        result.finalBlackboard = blackboard;
+        result.finalOutcome = lastOutcome_;
+        result.finalBlackboard = blackboard_;
         return result;
     }
 
-    [[nodiscard]] FrameRegistry StackFrameRuntime::BuildRegistry()
+    [[nodiscard]] bool StackFrameRuntimeSession::RunSingleTick(FrameRunResult& result)
+    {
+        if (IsTerminal()) {
+            return false;
+        }
+
+        // M2b + M4 dirty persistence contract:
+        // dirty slots represent writes in the currently executing tick only.
+        // Save() at the boundary persists the exact dirty slots from the most recently completed tick.
+        blackboard_.ClearDirty();
+
+        for (const ScheduledMessage& scheduled : scheduledMessages_) {
+            if (scheduled.tick == nextTick_) {
+                mailbox_.Enqueue(scheduled.message);
+            }
+        }
+
+        mailbox_.BeginTick();
+        result.visibleMailboxByTick.push_back(mailbox_.VisibleMessages());
+
+        if (stack_.empty()) {
+            lastOutcome_ = StackRunOutcome::Completed;
+            return false;
+        }
+
+        StackFrameChunkEntry& frame = stack_.back();
+        EmitTrace(result, nextTick_, FrameTraceKind::Tick, frame, FrameControlKind::Continue, frame.id, stack_.size());
+
+        if (!frame.entered) {
+            frame.entered = true;
+            EmitTrace(result, nextTick_, FrameTraceKind::Enter, frame, FrameControlKind::Continue, frame.id, stack_.size());
+        }
+
+        if (frame.remainingWaitTicks > 0) {
+            --frame.remainingWaitTicks;
+            EmitTrace(result, nextTick_, FrameTraceKind::Step, frame, FrameControlKind::Wait, frame.id, stack_.size());
+            lastOutcome_ = StackRunOutcome::Wait;
+            result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            ++nextTick_;
+            return true;
+        }
+
+        FrameCtx ctx(frame.id, nextTick_, frame.pc, frame.entered, blackboard_, mailbox_);
+        const FrameFn frameFunction = registry_.Find(frame.id);
+        if (frameFunction == nullptr) {
+            EmitTrace(result, nextTick_, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
+            EmitTrace(result, nextTick_, FrameTraceKind::TerminalFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
+            lastOutcome_ = StackRunOutcome::Failed;
+            result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            ++nextTick_;
+            return false;
+        }
+
+        const FrameControl control = frameFunction(ctx);
+        EmitTrace(result, nextTick_, FrameTraceKind::Step, frame, control.kind, control.target, stack_.size());
+
+        if (control.kind == FrameControlKind::Continue) {
+            frame.pc = control.resumePc;
+            lastOutcome_ = StackRunOutcome::Continue;
+        } else if (control.kind == FrameControlKind::Wait) {
+            frame.pc = control.resumePc;
+            frame.remainingWaitTicks = control.waitTicks > 0 ? control.waitTicks - 1 : 0;
+            lastOutcome_ = StackRunOutcome::Wait;
+        } else if (control.kind == FrameControlKind::Push) {
+            frame.pc = control.resumePc;
+            EmitTrace(result, nextTick_, FrameTraceKind::Push, frame, control.kind, control.target, stack_.size());
+            stack_.push_back(StackFrameChunkEntry{ .id = control.target });
+            lastOutcome_ = StackRunOutcome::Continue;
+        } else if (control.kind == FrameControlKind::Replace) {
+            const std::size_t depthBeforeReplace = stack_.size();
+            const StackFrameChunkEntry replaced = frame;
+            EmitTrace(result, nextTick_, FrameTraceKind::Replace, replaced, control.kind, control.target, depthBeforeReplace);
+            stack_.pop_back();
+            stack_.push_back(StackFrameChunkEntry{ .id = control.target });
+            lastOutcome_ = StackRunOutcome::Continue;
+        } else if (control.kind == FrameControlKind::Pop || control.kind == FrameControlKind::Complete) {
+            const std::size_t depthBeforePop = stack_.size();
+            const StackFrameChunkEntry completedFrame = frame;
+            EmitTrace(result, nextTick_, FrameTraceKind::ExitCompleted, completedFrame, control.kind, completedFrame.id, depthBeforePop);
+            stack_.pop_back();
+            EmitTrace(result, nextTick_, FrameTraceKind::Pop, completedFrame, control.kind, completedFrame.id, depthBeforePop);
+
+            if (stack_.empty()) {
+                lastOutcome_ = StackRunOutcome::Completed;
+                EmitTrace(result, nextTick_, FrameTraceKind::TerminalCompleted, completedFrame, control.kind, completedFrame.id, 0);
+            } else {
+                lastOutcome_ = StackRunOutcome::Continue;
+            }
+        } else {
+            const std::size_t depthBeforeFail = stack_.size();
+            const StackFrameChunkEntry failedFrame = frame;
+            EmitTrace(result, nextTick_, FrameTraceKind::ExitFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
+            EmitTrace(result, nextTick_, FrameTraceKind::TerminalFailed, failedFrame, control.kind, failedFrame.id, depthBeforeFail);
+            lastOutcome_ = StackRunOutcome::Failed;
+        }
+
+        result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+        ++nextTick_;
+        return !IsTerminal();
+    }
+
+    [[nodiscard]] FrameRegistry StackFrameRuntimeSession::BuildRegistry()
     {
         FrameRegistry registry;
         registry.Add(FrameId::RootPushChild, &nodes::RootPushChild);
@@ -811,5 +893,19 @@ namespace dragongod
         registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
         registry.Add(FrameId::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
         return registry;
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const
+    {
+        return RunForTicks(scenario, tickCount, RuntimeMailboxInput{});
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(
+        StackScriptScenario scenario,
+        TickIndex tickCount,
+        const RuntimeMailboxInput& mailboxInput) const
+    {
+        StackFrameRuntimeSession session(scenario, mailboxInput);
+        return session.RunForTicks(tickCount);
     }
 }
