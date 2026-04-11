@@ -30,6 +30,18 @@ namespace dragongod
                 return FrameId::RootPushFailingChild;
             }
 
+            if (scenario == StackScriptScenario::BlackboardSetReadComplete) {
+                return FrameId::RootSetThenReadBlackboard;
+            }
+
+            if (scenario == StackScriptScenario::BlackboardFallbackComplete) {
+                return FrameId::RootFallbackBranch;
+            }
+
+            if (scenario == StackScriptScenario::BlackboardParentChildComplete) {
+                return FrameId::RootParentChildBlackboard;
+            }
+
             return FrameId::RootContinueThenComplete;
         }
 
@@ -55,6 +67,13 @@ namespace dragongod
 
         namespace nodes
         {
+            namespace Keys
+            {
+                constexpr BbKey<bool> Alerted{ .name = "Alerted", .slot = 1 };
+                constexpr BbKey<bool> ChildSawAlerted{ .name = "ChildSawAlerted", .slot = 2 };
+                constexpr BbKey<int> Counter{ .name = "Counter", .slot = 3 };
+            }
+
             [[nodiscard]] FrameControl RootPushChild(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
@@ -113,6 +132,61 @@ namespace dragongod
                 }
             }
 
+            [[nodiscard]] FrameControl RootSetThenReadBlackboard(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::Alerted, true);
+                    return Dg::Continue(1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::Alerted, false)) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Fail(300);
+                default:
+                    return Dg::Fail(301);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootFallbackBranch(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Bb().GetOr(Keys::Alerted, false)) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Fail(302);
+                default:
+                    return Dg::Fail(303);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootParentChildBlackboard(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::Alerted, true);
+                    ctx.Bb().Set(Keys::Counter, 1);
+                    return Dg::Push(FrameId::ChildReadParentBool, 1);
+                case 1:
+                    if (!ctx.Bb().GetOr(Keys::ChildSawAlerted, false)) {
+                        return Dg::Fail(304);
+                    }
+
+                    return Dg::Push(FrameId::ChildWriteParentCounter, 2);
+                case 2:
+                    if (ctx.Bb().GetOr(Keys::Counter, 0) == 5) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Fail(305);
+                default:
+                    return Dg::Fail(306);
+                }
+            }
+
             [[nodiscard]] FrameControl ChildPop(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
@@ -133,6 +207,32 @@ namespace dragongod
                 }
             }
 
+            [[nodiscard]] FrameControl ChildReadParentBool(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    if (ctx.Bb().GetOr(Keys::Alerted, false)) {
+                        ctx.Bb().Set(Keys::ChildSawAlerted, true);
+                        return Dg::Pop();
+                    }
+
+                    return Dg::Fail(307);
+                default:
+                    return Dg::Fail(308);
+                }
+            }
+
+            [[nodiscard]] FrameControl ChildWriteParentCounter(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::Counter, 5);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(309);
+                }
+            }
+
             [[nodiscard]] FrameControl RecoveryComplete(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
@@ -145,11 +245,12 @@ namespace dragongod
         }
     }
 
-    FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered)
+    FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard)
         : frameId_(frameId)
         , tick_(tick)
         , pc_(pc)
         , entered_(entered)
+        , blackboard_(&blackboard)
     {
     }
 
@@ -171,6 +272,67 @@ namespace dragongod
     [[nodiscard]] bool FrameCtx::Entered() const
     {
         return entered_;
+    }
+
+    [[nodiscard]] Blackboard& FrameCtx::Bb()
+    {
+        return *blackboard_;
+    }
+
+    template <>
+    [[nodiscard]] const bool* Blackboard::FindValue<bool>(std::uint32_t slot) const
+    {
+        for (const BoolEntry& entry : boolEntries_) {
+            if (entry.slot == slot) {
+                return &entry.value;
+            }
+        }
+
+        return nullptr;
+    }
+
+    template <>
+    [[nodiscard]] const int* Blackboard::FindValue<int>(std::uint32_t slot) const
+    {
+        for (const IntEntry& entry : intEntries_) {
+            if (entry.slot == slot) {
+                return &entry.value;
+            }
+        }
+
+        return nullptr;
+    }
+
+    template <>
+    void Blackboard::UpsertValue<bool>(std::uint32_t slot, const bool& value)
+    {
+        for (BoolEntry& entry : boolEntries_) {
+            if (entry.slot == slot) {
+                entry.value = value;
+                return;
+            }
+        }
+
+        boolEntries_.push_back(BoolEntry{
+            .slot = slot,
+            .value = value
+        });
+    }
+
+    template <>
+    void Blackboard::UpsertValue<int>(std::uint32_t slot, const int& value)
+    {
+        for (IntEntry& entry : intEntries_) {
+            if (entry.slot == slot) {
+                entry.value = value;
+                return;
+            }
+        }
+
+        intEntries_.push_back(IntEntry{
+            .slot = slot,
+            .value = value
+        });
     }
 
     void FrameRegistry::Add(FrameId id, FrameFn function)
@@ -255,6 +417,7 @@ namespace dragongod
     {
         const FrameRegistry registry = BuildRegistry();
         FrameRunResult result;
+        Blackboard blackboard;
         std::vector<FrameInstance> stack;
         stack.push_back(FrameInstance{ .id = ScenarioRootFrame(scenario) });
 
@@ -279,7 +442,7 @@ namespace dragongod
                 continue;
             }
 
-            FrameCtx ctx(frame.id, tick, frame.pc, frame.entered);
+            FrameCtx ctx(frame.id, tick, frame.pc, frame.entered, blackboard);
             const FrameFn frameFunction = registry.Find(frame.id);
             if (frameFunction == nullptr) {
                 EmitTrace(result, tick, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
@@ -362,8 +525,13 @@ namespace dragongod
         registry.Add(FrameId::RootWaitThenPush, &nodes::RootWaitThenPush);
         registry.Add(FrameId::RootPushFailingChild, &nodes::RootPushFailingChild);
         registry.Add(FrameId::RootContinueThenComplete, &nodes::RootContinueThenComplete);
+        registry.Add(FrameId::RootSetThenReadBlackboard, &nodes::RootSetThenReadBlackboard);
+        registry.Add(FrameId::RootFallbackBranch, &nodes::RootFallbackBranch);
+        registry.Add(FrameId::RootParentChildBlackboard, &nodes::RootParentChildBlackboard);
         registry.Add(FrameId::ChildPop, &nodes::ChildPop);
         registry.Add(FrameId::ChildFail, &nodes::ChildFail);
+        registry.Add(FrameId::ChildReadParentBool, &nodes::ChildReadParentBool);
+        registry.Add(FrameId::ChildWriteParentCounter, &nodes::ChildWriteParentCounter);
         registry.Add(FrameId::RecoveryComplete, &nodes::RecoveryComplete);
         return registry;
     }
