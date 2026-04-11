@@ -1464,8 +1464,8 @@ namespace dragongod
         : scenario_(scenario)
         , registry_(BuildRegistry())
         , scheduledMessages_(mailboxInput.scheduledMessages)
-        , actRuntime_(new ActRuntime())
-        , utilityMemory_(new UtilityMemoryStore())
+        , actRuntime_(std::make_unique<ActRuntime>())
+        , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
         stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
         for (const Message& message : mailboxInput.initialMessages) {
@@ -1478,8 +1478,8 @@ namespace dragongod
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
         , registry_(BuildRegistry())
-        , actRuntime_(new ActRuntime())
-        , utilityMemory_(new UtilityMemoryStore())
+        , actRuntime_(std::make_unique<ActRuntime>())
+        , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
         stack_ = chunk.stack.frames;
         actRuntime_->ImportDeferredChunk(chunk.deferredActuation);
@@ -1489,13 +1489,7 @@ namespace dragongod
         scheduledMessages_ = chunk.scheduledMessages;
     }
 
-    StackFrameRuntimeSession::~StackFrameRuntimeSession()
-    {
-        delete actRuntime_;
-        actRuntime_ = nullptr;
-        delete utilityMemory_;
-        utilityMemory_ = nullptr;
-    }
+    StackFrameRuntimeSession::~StackFrameRuntimeSession() = default;
 
     [[nodiscard]] TickIndex StackFrameRuntimeSession::NextTick() const
     {
@@ -1514,10 +1508,6 @@ namespace dragongod
         }
 
         if (lastOutcome_ == StackRunOutcome::Completed) {
-            if (actRuntime_ == nullptr) {
-                return true;
-            }
-
             return actRuntime_->Pending().empty();
         }
 
