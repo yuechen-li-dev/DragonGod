@@ -41,6 +41,11 @@ M12c adds a bounded benchmark lane that measures real sample behavior through Ma
 
 These are timing measurements only; they do not replace semantic correctness tests.
 
+## Benchmark report artifact (M12d)
+
+- Benchmark report: [`report.md`](./report.md)
+- Raw benchmark capture: [`bench-results.txt`](./bench-results.txt)
+
 ## Sample-local tests
 
 M12b tests are kept with the sample and use `*_tests*` filenames:
