@@ -139,6 +139,19 @@ if (!ctx.Mb().ConsumeFront(message)) {
 
 Use `PeekFront` for inspect-without-consume flows.
 
+`ctx.Mb().Enqueue(...)` is also a legitimate in-frame authoring surface:
+
+```cpp
+ctx.Mb().Enqueue(dragongod::Message{
+    .kind = dragongod::MessageKind::Signal,
+    .value = 42
+});
+```
+
+Current runtime rule: enqueue during a frame appends to mailbox staged messages, so it is **not** visible to `PeekFront` / `ConsumeFront` in that same tick. It becomes visible on the next tick when runtime calls `BeginTick()` and staged messages move to visible.
+
+This is useful for self-signaling or frame-to-frame mailbox flows where one phase/frame intentionally schedules mailbox work for the next tick.
+
 ## Actuation via `ctx.Act()`
 
 Canonical usage:
