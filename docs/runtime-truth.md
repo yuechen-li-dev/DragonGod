@@ -143,6 +143,28 @@ Rules:
 
 Runtime also supports scheduled inputs by tick; messages scheduled for `nextTick_` are enqueued before `BeginTick`, so they become visible that tick.
 
+### Message payload shape (current full surface)
+
+`Message` is currently a two-field payload:
+
+```cpp
+enum class MessageKind
+{
+    Signal,
+    Alert
+};
+
+struct Message
+{
+    MessageKind kind = MessageKind::Signal;
+    int value = 0;
+};
+```
+
+- `kind` is the coarse message category (`Signal` or `Alert` today).
+- `value` is the integer payload associated with that message kind.
+- There are no additional message fields in the current runtime; this is the full mailbox payload surface used by frame logic and traces.
+
 ### Do / do-not guidance
 
 - Do assume FIFO order for both visibility and consumption.
@@ -210,6 +232,14 @@ Utility authoring surface:
 
 - candidates built via `when(targetFrame, considerationFn)`
 - decision executed by `Decide(ctx, { ...candidates... }, DecideOptions)`
+
+`DecideOptions` defaults (when omitted, including plain `Decide(ctx, {...})`) are:
+
+- `hysteresis = 0.0f`
+- `minCommitTicks = 0`
+- `tieBreak = TieBreakPolicy::KeepCurrent`
+
+So default behavior applies no extra challenger margin, no minimum commit-age gate, and uses `KeepCurrent` tie resolution when scores tie and a committed target exists.
 
 Decision behavior:
 
@@ -286,7 +316,31 @@ For DragonGod runtime truth, Marionette tests currently serve as the semantic pr
 
 ---
 
-## 11) Cross-cutting anti-patterns (authoring guardrails)
+## 11) `Dg::Fail(reason)` observability semantics (current truth)
+
+`Dg::Fail(reason)` is an explicit author failure marker that returns `FrameControlKind::Fail` and carries an integer `failReason` in `FrameControl`.
+
+What `reason` means today:
+
+- it is author-supplied debugging/tagging data (for example `Fail(100)` vs `Fail(706)` branches),
+- it is not interpreted by runtime control logic beyond marking control kind `Fail`,
+- runtime terminal outcome is simply `StackRunOutcome::Failed`.
+
+Where it is visible today:
+
+- directly at the frame return/control object boundary (`FrameControl.failReason`).
+
+Where it is not surfaced today:
+
+- `FrameTraceEvent` does not include a fail-reason field,
+- `TickTraceEntry` does not include a fail-reason field,
+- `FrameRunResult` final outcome does not carry a fail-reason field.
+
+So high-level trace/replay surfaces expose that a failure happened, but not the integer reason code.
+
+---
+
+## 12) Cross-cutting anti-patterns (authoring guardrails)
 
 1. **Do not hand-roll phase state in blackboard** when typed phase helpers already express it.
 2. **Do not bypass `ctx.Act()`** with direct effect mutation; that breaks trace/persistence boundaries.
@@ -299,10 +353,9 @@ For DragonGod runtime truth, Marionette tests currently serve as the semantic pr
 
 ---
 
-## 12) Known clarity gaps called out explicitly
+## 13) Known clarity gaps called out explicitly
 
 These are current-state clarity gaps in repository ergonomics (not hidden assumptions):
 
 - Public docs for runtime are currently minimal (`src/DragonGod/README.md` is placeholder), so this file is the first substantial runtime truth layer.
 - Frame extensibility is presently internal/static (built-in frame registry), so external “author your own frame pack” workflow is not yet documented because it is not yet implemented as a stable public API.
-

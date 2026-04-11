@@ -4,6 +4,34 @@ This page centralizes per-tick runtime order and replay equivalence checks.
 
 For full semantics, see [`runtime-truth.md`](./runtime-truth.md).
 
+## Scheduled mailbox input (session/test construction surface)
+
+Deterministic runs can be built with runtime mailbox input at session/runtime construction time:
+
+- `RuntimeMailboxInput.initialMessages`
+- `RuntimeMailboxInput.scheduledMessages`
+
+`scheduledMessages` is a list of:
+
+```cpp
+struct ScheduledMessage
+{
+    TickIndex tick;
+    Message message;
+};
+```
+
+Purpose:
+
+- this is an external run-construction surface used by tests/sessions to inject tick-timed input,
+- it is separate from in-frame authoring calls like `ctx.Mb().Enqueue(...)`.
+
+Delivery timing:
+
+- on each tick, runtime enqueues scheduled entries whose `tick == nextTick_` before `mailbox.BeginTick()`,
+- because begin-tick then stages-to-visible, those scheduled messages are visible/consumable in that same tick,
+- frame-local `Enqueue` still stages for next tick, so it does not bypass mailbox visibility rules.
+
 ## One runtime tick, in order
 
 For `StackFrameRuntimeSession::RunSingleTick(...)`, the current order is:
