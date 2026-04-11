@@ -32,7 +32,12 @@ namespace dragongod
         ChildFail,
         ChildReadParentBool,
         ChildWriteParentCounter,
-        RecoveryComplete
+        RecoveryComplete,
+        RootMailboxConsumeFifo,
+        RootMailboxPeekThenConsume,
+        RootMailboxParentPushChildConsume,
+        RootMailboxEnqueueDuringTick,
+        ChildMailboxConsumeAndPop
     };
 
     enum class FrameControlKind
@@ -69,7 +74,52 @@ namespace dragongod
         ContinueThenComplete,
         BlackboardSetReadComplete,
         BlackboardFallbackComplete,
-        BlackboardParentChildComplete
+        BlackboardParentChildComplete,
+        MailboxConsumeFifoComplete,
+        MailboxPeekThenConsumeComplete,
+        MailboxParentChildConsumeComplete,
+        MailboxEnqueueDuringTickComplete
+    };
+
+    enum class MessageKind
+    {
+        Signal,
+        Alert
+    };
+
+    struct Message
+    {
+        MessageKind kind = MessageKind::Signal;
+        int value = 0;
+
+        [[nodiscard]] bool operator==(const Message& other) const = default;
+    };
+
+    struct ScheduledMessage
+    {
+        TickIndex tick = 0;
+        Message message{};
+    };
+
+    struct RuntimeMailboxInput
+    {
+        std::vector<Message> initialMessages;
+        std::vector<ScheduledMessage> scheduledMessages;
+    };
+
+    class Mailbox
+    {
+    public:
+        void Enqueue(const Message& message);
+        void BeginTick();
+        [[nodiscard]] bool HasMessage() const;
+        [[nodiscard]] bool PeekFront(Message& message) const;
+        [[nodiscard]] bool ConsumeFront(Message& message);
+        [[nodiscard]] const std::vector<Message>& VisibleMessages() const;
+
+    private:
+        std::vector<Message> visible_;
+        std::vector<Message> staged_;
     };
 
     template <typename T>
@@ -137,12 +187,14 @@ namespace dragongod
     {
     public:
         FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard);
+        FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard, Mailbox& mailbox);
 
         [[nodiscard]] FrameId Id() const;
         [[nodiscard]] TickIndex Tick() const;
         [[nodiscard]] std::uint32_t Pc() const;
         [[nodiscard]] bool Entered() const;
         [[nodiscard]] Blackboard& Bb();
+        [[nodiscard]] Mailbox& Mb();
 
     private:
         FrameId frameId_;
@@ -150,6 +202,7 @@ namespace dragongod
         std::uint32_t pc_;
         bool entered_;
         Blackboard* blackboard_ = nullptr;
+        Mailbox* mailbox_ = nullptr;
     };
 
     using FrameFn = FrameControl (*)(FrameCtx& ctx);
@@ -199,12 +252,18 @@ namespace dragongod
         StackRunOutcome finalOutcome = StackRunOutcome::Continue;
         std::vector<FrameTraceEvent> trace;
         std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
+        std::vector<std::vector<Message>> visibleMailboxByTick;
+        Blackboard finalBlackboard;
     };
 
     class StackFrameRuntime
     {
     public:
         [[nodiscard]] FrameRunResult RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const;
+        [[nodiscard]] FrameRunResult RunForTicks(
+            StackScriptScenario scenario,
+            TickIndex tickCount,
+            const RuntimeMailboxInput& mailboxInput) const;
 
     private:
         [[nodiscard]] static FrameRegistry BuildRegistry();
