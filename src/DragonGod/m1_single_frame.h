@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace dragongod
@@ -23,8 +25,13 @@ namespace dragongod
         RootWaitThenPush,
         RootPushFailingChild,
         RootContinueThenComplete,
+        RootSetThenReadBlackboard,
+        RootFallbackBranch,
+        RootParentChildBlackboard,
         ChildPop,
         ChildFail,
+        ChildReadParentBool,
+        ChildWriteParentCounter,
         RecoveryComplete
     };
 
@@ -59,7 +66,52 @@ namespace dragongod
         ReplaceComplete,
         WaitPushPopComplete,
         PushChildFail,
-        ContinueThenComplete
+        ContinueThenComplete,
+        BlackboardSetReadComplete,
+        BlackboardFallbackComplete,
+        BlackboardParentChildComplete
+    };
+
+    template <typename T>
+    struct BbKey
+    {
+        std::string_view name{};
+        std::uint32_t slot = 0;
+    };
+
+    class Blackboard
+    {
+    public:
+        template <typename T>
+        void Set(BbKey<T> key, const T& value);
+
+        template <typename T>
+        [[nodiscard]] bool TryGet(BbKey<T> key, T& value) const;
+
+        template <typename T>
+        [[nodiscard]] T GetOr(BbKey<T> key, const T& fallback) const;
+
+    private:
+        struct BoolEntry
+        {
+            std::uint32_t slot = 0;
+            bool value = false;
+        };
+
+        struct IntEntry
+        {
+            std::uint32_t slot = 0;
+            int value = 0;
+        };
+
+        template <typename T>
+        [[nodiscard]] const T* FindValue(std::uint32_t slot) const;
+
+        template <typename T>
+        void UpsertValue(std::uint32_t slot, const T& value);
+
+        std::vector<BoolEntry> boolEntries_;
+        std::vector<IntEntry> intEntries_;
     };
 
     struct FrameControl
@@ -74,18 +126,20 @@ namespace dragongod
     class FrameCtx
     {
     public:
-        FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered);
+        FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard);
 
         [[nodiscard]] FrameId Id() const;
         [[nodiscard]] TickIndex Tick() const;
         [[nodiscard]] std::uint32_t Pc() const;
         [[nodiscard]] bool Entered() const;
+        [[nodiscard]] Blackboard& Bb();
 
     private:
         FrameId frameId_;
         TickIndex tick_;
         std::uint32_t pc_;
         bool entered_;
+        Blackboard* blackboard_ = nullptr;
     };
 
     using FrameFn = FrameControl (*)(FrameCtx& ctx);
@@ -144,4 +198,36 @@ namespace dragongod
     private:
         [[nodiscard]] static FrameRegistry BuildRegistry();
     };
+
+    template <typename T>
+    void Blackboard::Set(BbKey<T> key, const T& value)
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        UpsertValue<T>(key.slot, value);
+    }
+
+    template <typename T>
+    [[nodiscard]] bool Blackboard::TryGet(BbKey<T> key, T& value) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        const T* found = FindValue<T>(key.slot);
+        if (found == nullptr) {
+            return false;
+        }
+
+        value = *found;
+        return true;
+    }
+
+    template <typename T>
+    [[nodiscard]] T Blackboard::GetOr(BbKey<T> key, const T& fallback) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        const T* found = FindValue<T>(key.slot);
+        if (found == nullptr) {
+            return fallback;
+        }
+
+        return *found;
+    }
 }
