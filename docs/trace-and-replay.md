@@ -55,6 +55,12 @@ For `StackFrameRuntimeSession::RunSingleTick(...)`, the current order is:
     - bounded `TickTraceEntry` (including pending deferred queue).
 12. increment `nextTick_`.
 
+Drain-tick implication:
+
+- step 8 means stack-empty ticks are still real ticks when deferred actuation is pending.
+- on those ticks, frame logic does not execute, but `FlushMatured()` has already run, so newly due deferred requests can emit.
+- those drain ticks still appear in `tickTrace`/`actuationByTick`; this is expected and replay-relevant.
+
 ## How trace entries relate to ticks
 
 - There is one `TickTraceEntry` per executed tick.

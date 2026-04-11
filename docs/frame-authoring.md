@@ -54,6 +54,8 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
 - `Dg::WaitTicks(ticks, resume)`
   - wait for `ticks` tick boundaries, then run this frame again at `resume`.
   - `WaitTicks(1, resume)` runs again next tick; `WaitTicks(2, resume)` skips one full tick and runs on the following tick.
+  - `WaitTicks(0, resume)` is a sharp-edge do-not: today it still resumes on the next tick in practice, so it is not a meaningful wait duration.
+  - if no real wait is intended, use `Continue(...)` instead of `WaitTicks(0, ...)`.
 - `Dg::Stay()`
   - continue without changing pc (implemented as continue-with-stay flag).
 - `Dg::Push(child, resumePc)`
@@ -117,6 +119,13 @@ if (ctx.Bb().GetOr(Keys::Alerted, false)) {
 ```
 
 Use typed keys (`BbKey<bool>` / `BbKey<int>`) with stable slot ids.
+
+Operational blackboard truth:
+
+- `ctx.Bb()` is the real mutable session blackboard (not a temporary copy).
+- multiple `Set(...)` calls in one tick all apply to that same underlying state.
+- if the same slot is written multiple times in one tick, the last written value is what later reads and persisted state observe.
+- dirty tracking marks whether a slot was written during the tick; it does not count how many times it was written.
 
 > ⚠️ **Hazard: `BbKey` identity is the slot id, not the name.**
 >
@@ -184,6 +193,15 @@ Author expectations:
 - reads from `FrameCtx` (usually blackboard, sometimes mailbox-derived state).
 - returns a score in `[0, 1]`.
 - can be any plain function of that shape; `When::Alerted`, `When::LowAmmo`, and `When::Always` are built-in examples, not special language features.
+- consideration signatures are `const FrameCtx&`, so they are read-only by design.
+- in that context `ctx.Bb()` is const access; mutating calls like `ctx.Bb().Set(...)` are compile-time misuse, not a supported pattern.
+- keep consideration logic pure/read-only and perform mutations in frame body code that receives non-const `FrameCtx&`.
+
+Utility score range warning:
+
+- runtime silently clamps consideration scores to `[0,1]`.
+- out-of-range returns are not treated as errors.
+- treat normalized `[0,1]` output as required for predictable authored behavior; clamp is fallback protection, not recommended signaling.
 
 ### Utility decision call site shape
 
