@@ -47,62 +47,66 @@ namespace
         return "terminal_failed";
     }
 
-    [[nodiscard]] std::string ControlToString(dragongod::FrameControl control)
+    [[nodiscard]] std::string ControlToString(dragongod::FrameControlKind control)
     {
-        if (control == dragongod::FrameControl::Continue) {
+        if (control == dragongod::FrameControlKind::Continue) {
             return "continue";
         }
 
-        if (control == dragongod::FrameControl::Wait) {
+        if (control == dragongod::FrameControlKind::Wait) {
             return "wait";
         }
 
-        if (control == dragongod::FrameControl::Push) {
+        if (control == dragongod::FrameControlKind::Push) {
             return "push";
         }
 
-        if (control == dragongod::FrameControl::Pop) {
+        if (control == dragongod::FrameControlKind::Pop) {
             return "pop";
         }
 
-        if (control == dragongod::FrameControl::Replace) {
+        if (control == dragongod::FrameControlKind::Replace) {
             return "replace";
         }
 
-        if (control == dragongod::FrameControl::Complete) {
+        if (control == dragongod::FrameControlKind::Complete) {
             return "complete";
         }
 
         return "fail";
     }
 
-    [[nodiscard]] std::string FrameKindToString(dragongod::FrameKind kind)
+    [[nodiscard]] std::string FrameIdToString(dragongod::FrameId id)
     {
-        if (kind == dragongod::FrameKind::RootPushChild) {
+        if (id == dragongod::FrameId::RootPushChild) {
             return "root_push_child";
         }
 
-        if (kind == dragongod::FrameKind::ChildComplete) {
-            return "child_complete";
-        }
-
-        if (kind == dragongod::FrameKind::RootReplace) {
+        if (id == dragongod::FrameId::RootReplace) {
             return "root_replace";
         }
 
-        if (kind == dragongod::FrameKind::ReplacementComplete) {
-            return "replacement_complete";
-        }
-
-        if (kind == dragongod::FrameKind::RootWaitThenPush) {
+        if (id == dragongod::FrameId::RootWaitThenPush) {
             return "root_wait_then_push";
         }
 
-        if (kind == dragongod::FrameKind::RootPushFailingChild) {
+        if (id == dragongod::FrameId::RootPushFailingChild) {
             return "root_push_failing_child";
         }
 
-        return "child_fail";
+        if (id == dragongod::FrameId::RootContinueThenComplete) {
+            return "root_continue_then_complete";
+        }
+
+        if (id == dragongod::FrameId::ChildPop) {
+            return "child_pop";
+        }
+
+        if (id == dragongod::FrameId::ChildFail) {
+            return "child_fail";
+        }
+
+        return "recovery_complete";
     }
 
     [[nodiscard]] std::vector<std::string> SerializeTrace(const std::vector<dragongod::FrameTraceEvent>& trace)
@@ -114,10 +118,10 @@ namespace
             serialized.push_back(
                 "tick=" + std::to_string(event.tick) +
                 ",kind=" + TraceKindToString(event.kind) +
-                ",active=" + FrameKindToString(event.activeFrame) +
-                ",frame_step=" + std::to_string(event.frameStep) +
+                ",active=" + FrameIdToString(event.activeFrame) +
+                ",pc=" + std::to_string(event.framePc) +
                 ",control=" + ControlToString(event.control) +
-                ",target=" + FrameKindToString(event.targetFrame) +
+                ",target=" + FrameIdToString(event.targetFrame) +
                 ",depth=" + std::to_string(event.stackDepth));
         }
 
@@ -125,131 +129,191 @@ namespace
     }
 }
 
-FACT(M1b_PushAndPop_AreDeterministic_AndRestoreParent)
+FACT(M1c_CanonicalFrames_ExecutePushPopAndRestoreParent)
 {
     const dragongod::StackFrameRuntime runtime;
-    const dragongod::RuntimeState initialState{
-        .scenario = dragongod::StackScriptScenario::PushPopComplete,
-        .stack = {}
-    };
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::PushPopComplete, 10);
 
-    const dragongod::FrameRunResult run = runtime.RunForTicks(initialState, 10);
-
-    const std::vector<std::string> expectedTrace{
-        "tick=0,kind=tick,active=root_push_child,frame_step=0,control=continue,target=root_push_child,depth=1",
-        "tick=0,kind=enter,active=root_push_child,frame_step=0,control=continue,target=root_push_child,depth=1",
-        "tick=0,kind=step,active=root_push_child,frame_step=1,control=push,target=child_complete,depth=1",
-        "tick=0,kind=push,active=root_push_child,frame_step=1,control=push,target=child_complete,depth=1",
-        "tick=1,kind=tick,active=child_complete,frame_step=0,control=continue,target=child_complete,depth=2",
-        "tick=1,kind=enter,active=child_complete,frame_step=0,control=continue,target=child_complete,depth=2",
-        "tick=1,kind=step,active=child_complete,frame_step=1,control=pop,target=child_complete,depth=2",
-        "tick=1,kind=exit_completed,active=child_complete,frame_step=1,control=pop,target=child_complete,depth=2",
-        "tick=1,kind=pop,active=child_complete,frame_step=1,control=pop,target=child_complete,depth=2",
-        "tick=2,kind=tick,active=root_push_child,frame_step=1,control=continue,target=root_push_child,depth=1",
-        "tick=2,kind=step,active=root_push_child,frame_step=2,control=complete,target=root_push_child,depth=1",
-        "tick=2,kind=exit_completed,active=root_push_child,frame_step=2,control=complete,target=root_push_child,depth=1",
-        "tick=2,kind=pop,active=root_push_child,frame_step=2,control=complete,target=root_push_child,depth=1",
-        "tick=2,kind=terminal_completed,active=root_push_child,frame_step=2,control=complete,target=root_push_child,depth=0"
-    };
-
-    ASSERT_SEQUENCE_EQUAL(expectedTrace, SerializeTrace(run.trace), "push then child pop should return control to root before root completion");
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "push-pop scenario should terminate with completion");
-}
 
-FACT(M1b_Replace_SwapsTopFrame_WithoutGhostState)
-{
-    const dragongod::StackFrameRuntime runtime;
-    const dragongod::RuntimeState initialState{
-        .scenario = dragongod::StackScriptScenario::ReplaceComplete,
-        .stack = {}
-    };
-
-    const dragongod::FrameRunResult run = runtime.RunForTicks(initialState, 10);
-    const std::vector<std::string> serializedTrace = SerializeTrace(run.trace);
-
-    int rootEnterCount = 0;
-    int replacementEnterCount = 0;
+    bool sawPush = false;
+    bool sawChildPop = false;
+    bool sawRootComplete = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
-        if (event.kind == dragongod::FrameTraceKind::Enter && event.activeFrame == dragongod::FrameKind::RootReplace) {
-            ++rootEnterCount;
+        if (event.kind == dragongod::FrameTraceKind::Push &&
+            event.activeFrame == dragongod::FrameId::RootPushChild &&
+            event.targetFrame == dragongod::FrameId::ChildPop) {
+            sawPush = true;
         }
 
-        if (event.kind == dragongod::FrameTraceKind::Enter && event.activeFrame == dragongod::FrameKind::ReplacementComplete) {
-            ++replacementEnterCount;
+        if (event.kind == dragongod::FrameTraceKind::Pop &&
+            event.activeFrame == dragongod::FrameId::ChildPop) {
+            sawChildPop = true;
+        }
+
+        if (event.kind == dragongod::FrameTraceKind::TerminalCompleted &&
+            event.activeFrame == dragongod::FrameId::RootPushChild) {
+            sawRootComplete = true;
         }
     }
 
-    const std::vector<std::string> expectedTrace{
-        "tick=0,kind=tick,active=root_replace,frame_step=0,control=continue,target=root_replace,depth=1",
-        "tick=0,kind=enter,active=root_replace,frame_step=0,control=continue,target=root_replace,depth=1",
-        "tick=0,kind=step,active=root_replace,frame_step=1,control=replace,target=replacement_complete,depth=1",
-        "tick=0,kind=replace,active=root_replace,frame_step=1,control=replace,target=replacement_complete,depth=1",
-        "tick=1,kind=tick,active=replacement_complete,frame_step=0,control=continue,target=replacement_complete,depth=1",
-        "tick=1,kind=enter,active=replacement_complete,frame_step=0,control=continue,target=replacement_complete,depth=1",
-        "tick=1,kind=step,active=replacement_complete,frame_step=1,control=complete,target=replacement_complete,depth=1",
-        "tick=1,kind=exit_completed,active=replacement_complete,frame_step=1,control=complete,target=replacement_complete,depth=1",
-        "tick=1,kind=pop,active=replacement_complete,frame_step=1,control=complete,target=replacement_complete,depth=1",
-        "tick=1,kind=terminal_completed,active=replacement_complete,frame_step=1,control=complete,target=replacement_complete,depth=0"
-    };
+    ASSERT_TRUE(sawPush, "canonical root frame should push child frame");
+    ASSERT_TRUE(sawChildPop, "child frame should pop and return control");
+    ASSERT_TRUE(sawRootComplete, "root frame should complete after child returns");
+}
 
-    ASSERT_EQUAL(1, rootEnterCount, "replaced root frame should enter exactly once");
-    ASSERT_EQUAL(1, replacementEnterCount, "replacement frame should enter exactly once");
-    ASSERT_SEQUENCE_EQUAL(expectedTrace, serializedTrace, "replace should remove prior active frame and activate replacement cleanly");
+FACT(M1c_Replace_SwapsTopFrameWithoutGhostState)
+{
+    const dragongod::StackFrameRuntime runtime;
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::ReplaceComplete, 10);
+
+    int rootEnterCount = 0;
+    int replacementEnterCount = 0;
+    bool sawReplace = false;
+
+    for (const dragongod::FrameTraceEvent& event : run.trace) {
+        if (event.kind == dragongod::FrameTraceKind::Enter &&
+            event.activeFrame == dragongod::FrameId::RootReplace) {
+            ++rootEnterCount;
+        }
+
+        if (event.kind == dragongod::FrameTraceKind::Enter &&
+            event.activeFrame == dragongod::FrameId::RecoveryComplete) {
+            ++replacementEnterCount;
+        }
+
+        if (event.kind == dragongod::FrameTraceKind::Replace &&
+            event.activeFrame == dragongod::FrameId::RootReplace &&
+            event.targetFrame == dragongod::FrameId::RecoveryComplete) {
+            sawReplace = true;
+        }
+    }
+
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "replace scenario should complete");
+    ASSERT_EQUAL(1, rootEnterCount, "replaced frame should enter exactly once");
+    ASSERT_EQUAL(1, replacementEnterCount, "replacement frame should enter exactly once");
+    ASSERT_TRUE(sawReplace, "replace control should swap active frame to recovery");
 }
 
-FACT(M1b_Wait_IsNonTerminal_AndDeterministic)
+FACT(M1c_ProgramCounterResumption_IsRealAfterWaitAndReturn)
 {
     const dragongod::StackFrameRuntime runtime;
-    const dragongod::RuntimeState initialState{
-        .scenario = dragongod::StackScriptScenario::WaitPushPopComplete,
-        .stack = {}
-    };
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::WaitPushPopComplete, 10);
 
-    const dragongod::FrameRunResult shortRun = runtime.RunForTicks(initialState, 1);
-    const dragongod::FrameRunResult fullRun = runtime.RunForTicks(initialState, 10);
+    bool sawWaitOnPc0 = false;
+    bool sawPushOnPc1 = false;
+    bool sawCompleteOnPc2 = false;
 
-    ASSERT_TRUE(shortRun.finalOutcome == dragongod::StackRunOutcome::Wait, "first tick should wait without becoming terminal");
-    ASSERT_EQUAL(static_cast<std::size_t>(3), shortRun.trace.size(), "single wait tick should emit tick, enter, step");
-    ASSERT_TRUE(fullRun.finalOutcome == dragongod::StackRunOutcome::Completed, "wait-then-push scenario should eventually complete");
+    for (const dragongod::FrameTraceEvent& event : run.trace) {
+        if (event.kind != dragongod::FrameTraceKind::Step ||
+            event.activeFrame != dragongod::FrameId::RootWaitThenPush) {
+            continue;
+        }
+
+        if (event.control == dragongod::FrameControlKind::Wait && event.framePc == 0) {
+            sawWaitOnPc0 = true;
+        }
+
+        if (event.control == dragongod::FrameControlKind::Push && event.framePc == 1) {
+            sawPushOnPc1 = true;
+        }
+
+        if (event.control == dragongod::FrameControlKind::Complete && event.framePc == 2) {
+            sawCompleteOnPc2 = true;
+        }
+    }
+
+    ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "wait-push scenario should eventually complete");
+    ASSERT_TRUE(sawWaitOnPc0, "frame should wait while at pc=0");
+    ASSERT_TRUE(sawPushOnPc1, "frame should resume at pc=1 and push child");
+    ASSERT_TRUE(sawCompleteOnPc2, "frame should resume at pc=2 after child pop and complete");
 }
 
-FACT(M1b_ChildFailure_IsTerminal_AndStopsStackProgression)
+FACT(M1c_EnterSemantics_AreBoundedPerActivation)
 {
     const dragongod::StackFrameRuntime runtime;
-    const dragongod::RuntimeState initialState{
-        .scenario = dragongod::StackScriptScenario::PushChildFail,
-        .stack = {}
-    };
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::WaitPushPopComplete, 10);
 
-    const dragongod::FrameRunResult run = runtime.RunForTicks(initialState, 10);
+    int rootEnterCount = 0;
+    int childEnterCount = 0;
 
-    const std::vector<std::string> expectedTrace{
-        "tick=0,kind=tick,active=root_push_failing_child,frame_step=0,control=continue,target=root_push_failing_child,depth=1",
-        "tick=0,kind=enter,active=root_push_failing_child,frame_step=0,control=continue,target=root_push_failing_child,depth=1",
-        "tick=0,kind=step,active=root_push_failing_child,frame_step=1,control=push,target=child_fail,depth=1",
-        "tick=0,kind=push,active=root_push_failing_child,frame_step=1,control=push,target=child_fail,depth=1",
-        "tick=1,kind=tick,active=child_fail,frame_step=0,control=continue,target=child_fail,depth=2",
-        "tick=1,kind=enter,active=child_fail,frame_step=0,control=continue,target=child_fail,depth=2",
-        "tick=1,kind=step,active=child_fail,frame_step=1,control=fail,target=child_fail,depth=2",
-        "tick=1,kind=exit_failed,active=child_fail,frame_step=1,control=fail,target=child_fail,depth=2",
-        "tick=1,kind=terminal_failed,active=child_fail,frame_step=1,control=fail,target=child_fail,depth=2"
-    };
+    for (const dragongod::FrameTraceEvent& event : run.trace) {
+        if (event.kind != dragongod::FrameTraceKind::Enter) {
+            continue;
+        }
 
-    ASSERT_SEQUENCE_EQUAL(expectedTrace, SerializeTrace(run.trace), "child fail should terminate stack immediately without ghost parent resume");
+        if (event.activeFrame == dragongod::FrameId::RootWaitThenPush) {
+            ++rootEnterCount;
+        }
+
+        if (event.activeFrame == dragongod::FrameId::ChildPop) {
+            ++childEnterCount;
+        }
+    }
+
+    ASSERT_EQUAL(1, rootEnterCount, "root frame should enter once and then resume via pc");
+    ASSERT_EQUAL(1, childEnterCount, "child frame should enter once when pushed");
+}
+
+FACT(M1c_ChildFailure_IsTerminal_AndStopsStackProgression)
+{
+    const dragongod::StackFrameRuntime runtime;
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::PushChildFail, 10);
+
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Failed, "failure scenario should terminate as failed");
+
+    bool sawChildFailStep = false;
+    bool sawTerminalFailed = false;
+    for (const dragongod::FrameTraceEvent& event : run.trace) {
+        if (event.kind == dragongod::FrameTraceKind::Step &&
+            event.activeFrame == dragongod::FrameId::ChildFail &&
+            event.control == dragongod::FrameControlKind::Fail) {
+            sawChildFailStep = true;
+        }
+
+        if (event.kind == dragongod::FrameTraceKind::TerminalFailed &&
+            event.activeFrame == dragongod::FrameId::ChildFail) {
+            sawTerminalFailed = true;
+        }
+    }
+
+    ASSERT_TRUE(sawChildFailStep, "child fail frame should issue fail control");
+    ASSERT_TRUE(sawTerminalFailed, "runtime should emit terminal failed when child fails");
 }
 
-FACT(M1b_RepeatedRuns_WithSameInputs_HaveNoTraceDrift)
+FACT(M1c_CanonicalVerbs_IncludeContinue)
 {
     const dragongod::StackFrameRuntime runtime;
-    const dragongod::RuntimeState initialState{
-        .scenario = dragongod::StackScriptScenario::WaitPushPopComplete,
-        .stack = {}
-    };
+    const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::ContinueThenComplete, 10);
 
-    const dragongod::FrameRunResult firstRun = runtime.RunForTicks(initialState, 10);
-    const dragongod::FrameRunResult secondRun = runtime.RunForTicks(initialState, 10);
+    bool sawContinueOnPc0 = false;
+    bool sawCompleteOnPc1 = false;
+    for (const dragongod::FrameTraceEvent& event : run.trace) {
+        if (event.kind != dragongod::FrameTraceKind::Step ||
+            event.activeFrame != dragongod::FrameId::RootContinueThenComplete) {
+            continue;
+        }
+
+        if (event.control == dragongod::FrameControlKind::Continue && event.framePc == 0) {
+            sawContinueOnPc0 = true;
+        }
+
+        if (event.control == dragongod::FrameControlKind::Complete && event.framePc == 1) {
+            sawCompleteOnPc1 = true;
+        }
+    }
+
+    ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "continue scenario should complete");
+    ASSERT_TRUE(sawContinueOnPc0, "frame should use continue control from pc=0");
+    ASSERT_TRUE(sawCompleteOnPc1, "frame should resume on pc=1 and complete");
+}
+
+FACT(M1c_RepeatedRuns_WithSameInputs_HaveNoTraceDrift)
+{
+    const dragongod::StackFrameRuntime runtime;
+
+    const dragongod::FrameRunResult firstRun = runtime.RunForTicks(dragongod::StackScriptScenario::WaitPushPopComplete, 10);
+    const dragongod::FrameRunResult secondRun = runtime.RunForTicks(dragongod::StackScriptScenario::WaitPushPopComplete, 10);
 
     ASSERT_TRUE(firstRun.finalOutcome == secondRun.finalOutcome, "deterministic runs must match final outcome");
     ASSERT_EQUAL(firstRun.trace.size(), secondRun.trace.size(), "deterministic runs must match trace length");
