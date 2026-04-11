@@ -57,11 +57,21 @@ ASSERT_NOT_EQUAL(expected, actual, "values should differ");
 ASSERT_SEQUENCE_EQUAL(expectedVector, actualVector, "ordered sequence should match");
 ```
 
+Element equality uses `operator==` on each element pair at the same index.
+
+- custom structs in expected/actual sequences must define `operator==`
+- this is why many DragonGod runtime structs used in tests define equality directly
+
 ### `ASSERT_NEAR`
 
 ```cpp
-ASSERT_NEAR(10.0, measured, 0.1, "difference should stay in tolerance");
+ASSERT_NEAR(10.0f, measured, 0.1f, "difference should stay in tolerance");
 ```
+
+Current template constraint: expected, actual, and tolerance must resolve to the same numeric type.
+
+- mixed-type calls (for example `float` value with `double` literal tolerance) can fail to compile
+- use explicit literal suffixes where needed (for example `10.0f` and `0.1f` for float comparisons)
 
 ### `FAIL`
 

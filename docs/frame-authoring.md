@@ -173,6 +173,13 @@ ctx.Act().Deferred(ActId::RaiseAlarm, 2);
 
 Why: preserves deterministic per-tick emission/pending traces and save/restore behavior.
 
+Deferred timing sharp edge (current runtime order):
+
+- each tick flushes matured deferred requests before running frame code.
+- so deferred requests authored during tick `N` never mature later in tick `N` itself.
+- `Deferred(id, 1)` emitted on tick `N` matures on tick `N+1` flush.
+- `Deferred(id, 0)` emitted on tick `N` also first matures on tick `N+1` flush (because tick `N` flush already happened before your frame code ran).
+
 ## Utility helpers (`When::...`, `Dg::when`, `Dg::Decide`)
 
 ### Consideration function shape (`When::...` is just this shape)

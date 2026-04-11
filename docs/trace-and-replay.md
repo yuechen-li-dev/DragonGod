@@ -61,6 +61,23 @@ Drain-tick implication:
 - on those ticks, frame logic does not execute, but `FlushMatured()` has already run, so newly due deferred requests can emit.
 - those drain ticks still appear in `tickTrace`/`actuationByTick`; this is expected and replay-relevant.
 
+## Raw frame trace kind reference (`FrameRunResult.trace`)
+
+When you assert against raw frame trace instead of bounded tick trace, the current `FrameTraceKind` enum values are:
+
+- `Tick`
+- `Enter`
+- `Step`
+- `Push`
+- `Pop`
+- `Replace`
+- `ExitCompleted`
+- `ExitFailed`
+- `TerminalCompleted`
+- `TerminalFailed`
+
+Use these exact values when writing serialization helpers or explicit event-kind assertions.
+
 ## How trace entries relate to ticks
 
 - There is one `TickTraceEntry` per executed tick.
