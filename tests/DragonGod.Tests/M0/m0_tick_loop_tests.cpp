@@ -1,5 +1,5 @@
 #include "../../Marionette/test_harness.h"
-#include "../../../src/DragonGod/m0_tick_loop.h"
+#include "../../../src/DragonGod/tick_loop.h"
 
 #include <string>
 #include <vector>

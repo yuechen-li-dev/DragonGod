@@ -17,15 +17,15 @@ There is not yet an external “register my own frame pack” public API.
 
 For new authored tests/call sites, include:
 
-- `#include "../../../src/DragonGod/m1_single_frame.h"`
+- `#include "../../../src/DragonGod/runtime_compat.h"`
 
 Why this is the current default:
 
-- `m1_single_frame.h` is the compatibility umbrella used by the existing DragonGod tests.
+- `runtime_compat.h` is the compatibility umbrella used by the existing DragonGod tests.
 - It currently includes `runtime.h`, so runtime types (`StackFrameRuntime`, `FrameRunResult`, enums, context-facing types) are still available through that include path.
-- Using the same include as in-repo tests keeps new code aligned with current production/compatibility wiring while the repo still carries milestone-era file naming.
+- Using the same include as in-repo tests keeps new code aligned with current production/compatibility wiring.
 
-You can include `runtime.h` directly in runtime-internal code, but for new author-facing tests/examples in this repository, prefer `m1_single_frame.h` to match the active test suite pattern.
+You can include `runtime.h` directly in runtime-internal code, but for new author-facing tests/examples in this repository, prefer `runtime_compat.h` to match the active test suite pattern.
 
 ---
 
@@ -130,7 +130,7 @@ Create a test in `tests/DragonGod.Tests/...`:
 
 ```cpp
 #include "../../Marionette/test_harness.h"
-#include "../../../src/DragonGod/m1_single_frame.h"
+#include "../../../src/DragonGod/runtime_compat.h"
 
 FACT(HelloTwoPhase_Completes)
 {

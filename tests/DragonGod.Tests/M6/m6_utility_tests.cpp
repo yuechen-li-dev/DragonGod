@@ -1,5 +1,5 @@
 #include "../../Marionette/test_harness.h"
-#include "../../../src/DragonGod/m1_single_frame.h"
+#include "../../../src/DragonGod/runtime_compat.h"
 
 #include <string>
 #include <vector>
