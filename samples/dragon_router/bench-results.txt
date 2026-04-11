@@ -1,0 +1,12 @@
+[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=81710058 avg_ns=8171
+[BENCH] DragonRouter_QueueRetryDrainBench iterations=5000 elapsed_ns=81641071 avg_ns=16328
+[BENCH] DragonRouter_UtilityPathChoiceBench iterations=10000 elapsed_ns=80945212 avg_ns=8094
+
+Benchmark Summary: 3 benchmark(s)
+
+--- second run ---
+[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=70292924 avg_ns=7029
+[BENCH] DragonRouter_QueueRetryDrainBench iterations=5000 elapsed_ns=70078942 avg_ns=14015
+[BENCH] DragonRouter_UtilityPathChoiceBench iterations=10000 elapsed_ns=81488315 avg_ns=8148
+
+Benchmark Summary: 3 benchmark(s)
