@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <iterator>
 #include <string>
@@ -91,16 +92,72 @@ namespace marionette::tests
         TestRegistrar(const char* testName, TestFunction function);
     };
 
+    struct BenchmarkContext
+    {
+        std::uint64_t iteration = 0;
+    };
+
+    using BenchmarkFunction = void (*)(BenchmarkContext& context);
+
+    struct BenchmarkCase
+    {
+        std::string name;
+        BenchmarkFunction function = nullptr;
+        std::uint64_t iterations = 0;
+    };
+
+    class BenchmarkRegistrar
+    {
+    public:
+        BenchmarkRegistrar(const char* benchmarkName, BenchmarkFunction function, std::uint64_t iterations);
+    };
+
+    struct BenchmarkResult
+    {
+        std::string name;
+        std::uint64_t iterations = 0;
+        std::uint64_t elapsedNanoseconds = 0;
+    };
+
     [[nodiscard]] std::vector<TestCase>& Registry();
+    [[nodiscard]] std::vector<BenchmarkCase>& BenchmarkRegistry();
     [[nodiscard]] int RunAllTests(std::string_view filter);
+    [[nodiscard]] int RunBenchmarks(std::string_view filter);
+    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(std::string_view filter);
 
     [[nodiscard]] std::string FormatValue(bool value);
+    [[nodiscard]] std::string FormatValue(double value);
+    [[nodiscard]] std::string FormatValue(float value);
     [[nodiscard]] std::string FormatValue(int value);
     [[nodiscard]] std::string FormatValue(std::size_t value);
     [[nodiscard]] std::string FormatValue(const char* value);
     [[nodiscard]] std::string FormatValue(const std::string& value);
     [[nodiscard]] std::string FormatValue(std::string_view value);
     [[nodiscard]] std::string FormatValue(unsigned int value);
+
+    template <typename NumericType>
+    void AssertNear(
+        TestContext& context,
+        NumericType expected,
+        NumericType actual,
+        NumericType tolerance,
+        const char* file,
+        int line,
+        std::string_view message)
+    {
+        const NumericType difference = expected >= actual ? expected - actual : actual - expected;
+        if (difference <= tolerance) {
+            return;
+        }
+
+        context.RecordFailure(
+            file,
+            line,
+            "ASSERT_NEAR",
+            std::string(message) + ", tolerance=" + FormatValue(tolerance) + ", difference=" + FormatValue(difference),
+            FormatValue(expected),
+            FormatValue(actual));
+    }
 
     template <typename ExpectedRange, typename ActualRange>
     void AssertSequenceEqual(
@@ -154,6 +211,16 @@ namespace marionette::tests
 
 #define THEORY(TEST_NAME) FACT(TEST_NAME)
 
+#define BENCHMARK(BENCHMARK_NAME) \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar(#BENCHMARK_NAME, &BENCHMARK_NAME, 10000); \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
+
+#define BENCHMARK_WITH_ITERATIONS(BENCHMARK_NAME, ITERATIONS) \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar(#BENCHMARK_NAME, &BENCHMARK_NAME, ITERATIONS); \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
+
 #define ASSERT_TRUE(CONDITION, MESSAGE) \
     do { \
         if (!(CONDITION)) { \
@@ -196,6 +263,14 @@ namespace marionette::tests
                 ::marionette::tests::FormatValue(expectedValue), \
                 ::marionette::tests::FormatValue(actualValue)); \
         } \
+    } while (false)
+
+#define ASSERT_NEAR(EXPECTED, ACTUAL, TOLERANCE, MESSAGE) \
+    do { \
+        const auto expectedValue = (EXPECTED); \
+        const auto actualValue = (ACTUAL); \
+        const auto toleranceValue = (TOLERANCE); \
+        ::marionette::tests::AssertNear(context, expectedValue, actualValue, toleranceValue, __FILE__, __LINE__, MESSAGE); \
     } while (false)
 
 #define FAIL(MESSAGE) \

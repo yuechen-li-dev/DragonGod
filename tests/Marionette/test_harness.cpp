@@ -1,9 +1,12 @@
 #include "test_harness.h"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <system_error>
 
 namespace marionette::tests
@@ -78,6 +81,13 @@ namespace marionette::tests
             for (const std::filesystem::path& artifactPath : context.ArtifactPaths()) {
                 std::cout << "    artifact: " << artifactPath.lexically_normal().string() << "\n";
             }
+        }
+
+        [[nodiscard]] std::string FormatFloatingValue(double value)
+        {
+            std::ostringstream stream;
+            stream << std::setprecision(17) << value;
+            return stream.str();
         }
     }
 
@@ -229,9 +239,27 @@ namespace marionette::tests
         });
     }
 
+    BenchmarkRegistrar::BenchmarkRegistrar(
+        const char* benchmarkName,
+        BenchmarkFunction function,
+        std::uint64_t iterations)
+    {
+        BenchmarkRegistry().push_back(BenchmarkCase{
+            .name = benchmarkName,
+            .function = function,
+            .iterations = iterations
+        });
+    }
+
     [[nodiscard]] std::vector<TestCase>& Registry()
     {
         static std::vector<TestCase> registry;
+        return registry;
+    }
+
+    [[nodiscard]] std::vector<BenchmarkCase>& BenchmarkRegistry()
+    {
+        static std::vector<BenchmarkCase> registry;
         return registry;
     }
 
@@ -297,9 +325,75 @@ namespace marionette::tests
         return failedCount == 0 ? 0 : 1;
     }
 
+    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(std::string_view filter)
+    {
+        std::vector<BenchmarkCase>& benchmarks = BenchmarkRegistry();
+        std::sort(
+            benchmarks.begin(),
+            benchmarks.end(),
+            [](const BenchmarkCase& left, const BenchmarkCase& right)
+            {
+                return left.name < right.name;
+            });
+
+        std::vector<BenchmarkResult> results;
+        for (const BenchmarkCase& benchmark : benchmarks) {
+            if (!MatchesFilter(benchmark.name, filter)) {
+                continue;
+            }
+
+            BenchmarkContext context;
+            const auto start = std::chrono::steady_clock::now();
+            for (std::uint64_t iteration = 0; iteration < benchmark.iterations; ++iteration) {
+                context.iteration = iteration;
+                benchmark.function(context);
+            }
+            const auto stop = std::chrono::steady_clock::now();
+            const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
+
+            results.push_back(BenchmarkResult{
+                .name = benchmark.name,
+                .iterations = benchmark.iterations,
+                .elapsedNanoseconds = static_cast<std::uint64_t>(elapsed.count())
+            });
+        }
+
+        return results;
+    }
+
+    [[nodiscard]] int RunBenchmarks(std::string_view filter)
+    {
+        const std::vector<BenchmarkResult> results = ExecuteBenchmarks(filter);
+
+        for (const BenchmarkResult& result : results) {
+            const std::uint64_t averageNanoseconds =
+                result.iterations == 0 ? 0 : result.elapsedNanoseconds / result.iterations;
+
+            std::cout
+                << "[BENCH] " << result.name
+                << " iterations=" << result.iterations
+                << " elapsed_ns=" << result.elapsedNanoseconds
+                << " avg_ns=" << averageNanoseconds
+                << "\n";
+        }
+
+        std::cout << "\nBenchmark Summary: " << results.size() << " benchmark(s)\n";
+        return 0;
+    }
+
     [[nodiscard]] std::string FormatValue(bool value)
     {
         return value ? "true" : "false";
+    }
+
+    [[nodiscard]] std::string FormatValue(double value)
+    {
+        return FormatFloatingValue(value);
+    }
+
+    [[nodiscard]] std::string FormatValue(float value)
+    {
+        return FormatFloatingValue(static_cast<double>(value));
     }
 
     [[nodiscard]] std::string FormatValue(int value)
