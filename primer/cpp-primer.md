@@ -14,13 +14,13 @@ intent:
       human contributors
   non_goals:
     - This is not a general C++ tutorial.
-    - This is not a showcase of every valid C++20 feature.
+    - This is not a showcase of every valid C++23 feature.
     - This is not a license to invent a new house dialect.
     - This is not an excuse to import clever patterns from random C++ codebases.
 
 goal:
   headline:
-    Use boring, explicit, portable C++20 that keeps ownership, control flow, and runtime cost obvious.
+    Use boring, explicit, portable C++23 that keeps ownership, control flow, and runtime cost obvious.
   success_criteria:
     - Code is easy to review locally.
     - Refactors stay localized.
@@ -39,7 +39,7 @@ core_principles:
   - Do not make the codebase more "advanced" at the cost of making it less trustworthy.
 
 must_do:
-  - Target C++20.
+  - Target C++23.
   - Keep code portable across MSVC, Clang, and GCC.
   - Use RAII for resource management.
   - Make ownership explicit at the point of use.
