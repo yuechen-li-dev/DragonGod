@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -38,7 +39,16 @@ namespace dragongod
         RootMailboxPeekThenConsume,
         RootMailboxParentPushChildConsume,
         RootMailboxEnqueueDuringTick,
-        ChildMailboxConsumeAndPop
+        ChildMailboxConsumeAndPop,
+        RootUtilityHighestScore,
+        RootUtilityHysteresis,
+        RootUtilityMinCommit,
+        RootUtilityTieBreakKeepCurrent,
+        RootUtilityTieBreakFirstListed,
+        RootUtilityTieBreakLastListed,
+        UtilityActionCombat,
+        UtilityActionReload,
+        UtilityActionPatrol
     };
 
     enum class FrameControlKind
@@ -79,7 +89,13 @@ namespace dragongod
         MailboxConsumeFifoComplete,
         MailboxPeekThenConsumeComplete,
         MailboxParentChildConsumeComplete,
-        MailboxEnqueueDuringTickComplete
+        MailboxEnqueueDuringTickComplete,
+        UtilityHighestScoreComplete,
+        UtilityHysteresisComplete,
+        UtilityMinCommitComplete,
+        UtilityTieBreakKeepCurrentComplete,
+        UtilityTieBreakFirstListedComplete,
+        UtilityTieBreakLastListedComplete
     };
 
     enum class MessageKind
@@ -224,6 +240,41 @@ namespace dragongod
         int failReason = 0;
     };
 
+    struct UtilityDecisionCandidateTrace
+    {
+        FrameId target = FrameId::RootPushChild;
+        float score = 0.0f;
+
+        [[nodiscard]] bool operator==(const UtilityDecisionCandidateTrace& other) const = default;
+    };
+
+    struct UtilityDecisionTraceEntry
+    {
+        FrameId decisionFrame = FrameId::RootPushChild;
+        std::vector<UtilityDecisionCandidateTrace> candidates;
+        bool hadCommittedBefore = false;
+        FrameId committedBefore = FrameId::RootPushChild;
+        std::uint32_t committedAgeBefore = 0;
+        FrameId chosen = FrameId::RootPushChild;
+        bool minCommitBlocked = false;
+        bool hysteresisBlocked = false;
+        bool tieBreakUsed = false;
+
+        [[nodiscard]] bool operator==(const UtilityDecisionTraceEntry& other) const = default;
+    };
+
+    struct UtilityMemoryChunkEntry
+    {
+        FrameId frame = FrameId::RootPushChild;
+        bool hasCommitted = false;
+        FrameId committed = FrameId::RootPushChild;
+        std::uint32_t age = 0;
+
+        [[nodiscard]] bool operator==(const UtilityMemoryChunkEntry& other) const = default;
+    };
+
+    class UtilityMemoryStore;
+
     class FrameCtx
     {
     public:
@@ -235,7 +286,10 @@ namespace dragongod
         [[nodiscard]] std::uint32_t Pc() const;
         [[nodiscard]] bool Entered() const;
         [[nodiscard]] Blackboard& Bb();
+        [[nodiscard]] const Blackboard& Bb() const;
         [[nodiscard]] Mailbox& Mb();
+        [[nodiscard]] const Mailbox& Mb() const;
+        [[nodiscard]] std::uint32_t ReadUtilityCommitAge(FrameId frameId) const;
 
     private:
         FrameId frameId_;
@@ -244,6 +298,21 @@ namespace dragongod
         bool entered_;
         Blackboard* blackboard_ = nullptr;
         Mailbox* mailbox_ = nullptr;
+        UtilityMemoryStore* utilityMemory_ = nullptr;
+        std::vector<UtilityDecisionTraceEntry>* utilityTrace_ = nullptr;
+
+        FrameCtx(
+            FrameId frameId,
+            TickIndex tick,
+            std::uint32_t pc,
+            bool entered,
+            Blackboard& blackboard,
+            Mailbox& mailbox,
+            UtilityMemoryStore& utilityMemory,
+            std::vector<UtilityDecisionTraceEntry>& utilityTrace);
+
+        friend class StackFrameRuntimeSession;
+        friend struct DecideAccess;
     };
 
     using FrameFn = FrameControl (*)(FrameCtx& ctx);
@@ -266,6 +335,34 @@ namespace dragongod
 
     namespace Dg
     {
+        using ConsiderationFn = float (*)(const FrameCtx& ctx);
+
+        struct UtilityCandidate
+        {
+            FrameId target = FrameId::RootPushChild;
+            ConsiderationFn consideration = nullptr;
+        };
+
+        enum class TieBreakPolicy
+        {
+            KeepCurrent,
+            FirstListed,
+            LastListed
+        };
+
+        struct DecideOptions
+        {
+            float hysteresis = 0.0f;
+            int minCommitTicks = 0;
+            TieBreakPolicy tieBreak = TieBreakPolicy::KeepCurrent;
+        };
+
+        [[nodiscard]] UtilityCandidate when(FrameId target, ConsiderationFn consideration);
+        [[nodiscard]] FrameControl Decide(
+            FrameCtx& ctx,
+            std::initializer_list<UtilityCandidate> candidates,
+            DecideOptions options = {});
+
         [[nodiscard]] FrameControl Continue(std::uint32_t resumePc);
         [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, std::uint32_t resumePc);
         [[nodiscard]] FrameControl Push(FrameId target, std::uint32_t resumePc);
@@ -312,6 +409,7 @@ namespace dragongod
         std::vector<StackFrameChunkEntry> stack;
         std::vector<std::uint32_t> dirtySlots;
         std::vector<Message> visibleMailbox;
+        std::vector<UtilityDecisionTraceEntry> utilityDecisions;
 
         [[nodiscard]] bool operator==(const TickTraceEntry& other) const = default;
     };
@@ -350,6 +448,7 @@ namespace dragongod
         StackRunOutcome lastOutcome = StackRunOutcome::Continue;
         std::vector<ScheduledMessage> scheduledMessages;
         StackChunk stack;
+        std::vector<UtilityMemoryChunkEntry> utilityMemory;
         Blackboard::Chunk blackboard;
         MailboxChunk mailbox;
 
@@ -361,6 +460,7 @@ namespace dragongod
     public:
         StackFrameRuntimeSession(StackScriptScenario scenario, const RuntimeMailboxInput& mailboxInput);
         explicit StackFrameRuntimeSession(const RuntimeChunk& chunk);
+        ~StackFrameRuntimeSession();
 
         [[nodiscard]] TickIndex NextTick() const;
         [[nodiscard]] StackRunOutcome LastOutcome() const;
@@ -381,6 +481,7 @@ namespace dragongod
         Mailbox mailbox_;
         std::vector<ScheduledMessage> scheduledMessages_;
         std::vector<StackFrameChunkEntry> stack_;
+        UtilityMemoryStore* utilityMemory_ = nullptr;
     };
 
     class StackFrameRuntime
@@ -392,6 +493,13 @@ namespace dragongod
             TickIndex tickCount,
             const RuntimeMailboxInput& mailboxInput) const;
     };
+
+    namespace When
+    {
+        [[nodiscard]] float Always(const FrameCtx& ctx);
+        [[nodiscard]] float Alerted(const FrameCtx& ctx);
+        [[nodiscard]] float LowAmmo(const FrameCtx& ctx);
+    }
 
     template <typename T>
     void Blackboard::Set(BbKey<T> key, const T& value)
