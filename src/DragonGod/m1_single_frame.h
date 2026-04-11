@@ -54,7 +54,8 @@ namespace dragongod
         RootActOrderedDeferred,
         RootActParentPushChild,
         ChildActImmediate,
-        RootActUtilityDriven
+        RootActUtilityDriven,
+        RootTypedPhaseMailboxAct
     };
 
     enum class FrameControlKind
@@ -105,7 +106,8 @@ namespace dragongod
         ActImmediateDeferredComplete,
         ActOrderedDeferredComplete,
         ActParentPushChildComplete,
-        ActUtilityDrivenComplete
+        ActUtilityDrivenComplete,
+        TypedPhaseMailboxActComplete
     };
 
     enum class ActId
@@ -292,6 +294,7 @@ namespace dragongod
         std::uint32_t waitTicks = 0;
         FrameId target = FrameId::RootPushChild;
         int failReason = 0;
+        bool stayOnCurrentPc = false;
     };
 
     struct UtilityDecisionCandidateTrace
@@ -338,6 +341,8 @@ namespace dragongod
         [[nodiscard]] FrameId Id() const;
         [[nodiscard]] TickIndex Tick() const;
         [[nodiscard]] std::uint32_t Pc() const;
+        template <typename TEnum>
+        [[nodiscard]] TEnum PcAs() const;
         [[nodiscard]] bool Entered() const;
         [[nodiscard]] Blackboard& Bb();
         [[nodiscard]] const Blackboard& Bb() const;
@@ -423,11 +428,20 @@ namespace dragongod
 
         [[nodiscard]] FrameControl Continue(std::uint32_t resumePc);
         [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, std::uint32_t resumePc);
+        [[nodiscard]] FrameControl Stay();
         [[nodiscard]] FrameControl Push(FrameId target, std::uint32_t resumePc);
         [[nodiscard]] FrameControl Pop();
         [[nodiscard]] FrameControl Replace(FrameId target);
         [[nodiscard]] FrameControl Complete();
         [[nodiscard]] FrameControl Fail(int reason);
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl Continue(TEnum resumePhase);
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, TEnum resumePhase);
     }
 
     struct FrameTraceEvent
@@ -602,5 +616,29 @@ namespace dragongod
     {
         static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
         return HasDirtySlot(key.slot);
+    }
+
+    template <typename TEnum>
+    [[nodiscard]] TEnum FrameCtx::PcAs() const
+    {
+        static_assert(std::is_enum_v<TEnum>, "PcAs requires an enum phase type");
+        return static_cast<TEnum>(pc_);
+    }
+
+    namespace Dg
+    {
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl Continue(TEnum resumePhase)
+        {
+            return Continue(static_cast<std::uint32_t>(resumePhase));
+        }
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, TEnum resumePhase)
+        {
+            return WaitTicks(ticks, static_cast<std::uint32_t>(resumePhase));
+        }
     }
 }
