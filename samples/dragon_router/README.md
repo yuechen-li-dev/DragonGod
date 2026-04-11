@@ -6,7 +6,7 @@ It is **not** a full router implementation.
 
 Its purpose is to pressure-test whether the blanket assumption "router logic must inherently belong to ASIC-only architecture" is too coarse for DragonGod-oriented deterministic control loops.
 
-## M12b congestion + utility behavior
+## M12c benchmark lane + M12b behavior
 
 The sample now implements a deterministic packet control loop with explicit frame-shaped steps:
 
@@ -26,6 +26,20 @@ The sample state is intentionally bounded and explicit:
 - queued packet metadata (`QueueEntry`) with retry timing and retry count
 - deterministic actuation (`Actuation`) including queue/retry/drain outcomes
 - forwarding/drop/queue/drain counters (`RouterState`)
+
+
+## Sample-local benchmarks
+
+M12c adds a bounded benchmark lane that measures real sample behavior through Marionette `--bench`:
+
+- `DragonRouter_ForwardKnownRouteBench`
+  - stresses straightforward known-route forwarding through the real runtime entrypoint
+- `DragonRouter_UtilityPathChoiceBench`
+  - stresses multi-candidate utility-based path selection before forwarding
+- `DragonRouter_QueueRetryDrainBench`
+  - stresses queue + deferred retry/drain behavior using a blocked-then-recovered path
+
+These are timing measurements only; they do not replace semantic correctness tests.
 
 ## Sample-local tests
 
@@ -47,7 +61,14 @@ g++ -std=c++23 -Wall -Wextra -pedantic \
   samples/dragon_router/router_model_tests.cpp \
   samples/dragon_router/router_nodes_tests.cpp \
   samples/dragon_router/router_runtime_tests.cpp \
+  samples/dragon_router/router_benchmarks_tests.cpp \
   -o out/dragon_router_tests
 
 ./out/dragon_router_tests
+
+# run all registered benchmarks
+./out/dragon_router_tests --bench
+
+# run only router benchmarks
+./out/dragon_router_tests --bench DragonRouter_
 ```
