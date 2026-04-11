@@ -2,6 +2,84 @@
 
 namespace dragongod
 {
+    class UtilityMemoryStore
+    {
+    public:
+        struct Entry
+        {
+            FrameId frame = FrameId::RootPushChild;
+            bool hasCommitted = false;
+            FrameId committed = FrameId::RootPushChild;
+            std::uint32_t age = 0;
+        };
+
+        [[nodiscard]] Entry* Find(FrameId frame)
+        {
+            for (Entry& entry : entries_) {
+                if (entry.frame == frame) {
+                    return &entry;
+                }
+            }
+
+            return nullptr;
+        }
+
+        [[nodiscard]] const Entry* Find(FrameId frame) const
+        {
+            for (const Entry& entry : entries_) {
+                if (entry.frame == frame) {
+                    return &entry;
+                }
+            }
+
+            return nullptr;
+        }
+
+        [[nodiscard]] Entry& Ensure(FrameId frame)
+        {
+            Entry* found = Find(frame);
+            if (found != nullptr) {
+                return *found;
+            }
+
+            entries_.push_back(Entry{
+                .frame = frame
+            });
+            return entries_.back();
+        }
+
+        [[nodiscard]] std::vector<UtilityMemoryChunkEntry> ExportChunk() const
+        {
+            std::vector<UtilityMemoryChunkEntry> chunk;
+            for (const Entry& entry : entries_) {
+                chunk.push_back(UtilityMemoryChunkEntry{
+                    .frame = entry.frame,
+                    .hasCommitted = entry.hasCommitted,
+                    .committed = entry.committed,
+                    .age = entry.age
+                });
+            }
+
+            return chunk;
+        }
+
+        void ImportChunk(const std::vector<UtilityMemoryChunkEntry>& chunk)
+        {
+            entries_.clear();
+            for (const UtilityMemoryChunkEntry& entry : chunk) {
+                entries_.push_back(Entry{
+                    .frame = entry.frame,
+                    .hasCommitted = entry.hasCommitted,
+                    .committed = entry.committed,
+                    .age = entry.age
+                });
+            }
+        }
+
+    private:
+        std::vector<Entry> entries_;
+    };
+
     namespace
     {
         [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario)
@@ -50,6 +128,30 @@ namespace dragongod
                 return FrameId::RootMailboxEnqueueDuringTick;
             }
 
+            if (scenario == StackScriptScenario::UtilityHighestScoreComplete) {
+                return FrameId::RootUtilityHighestScore;
+            }
+
+            if (scenario == StackScriptScenario::UtilityHysteresisComplete) {
+                return FrameId::RootUtilityHysteresis;
+            }
+
+            if (scenario == StackScriptScenario::UtilityMinCommitComplete) {
+                return FrameId::RootUtilityMinCommit;
+            }
+
+            if (scenario == StackScriptScenario::UtilityTieBreakKeepCurrentComplete) {
+                return FrameId::RootUtilityTieBreakKeepCurrent;
+            }
+
+            if (scenario == StackScriptScenario::UtilityTieBreakFirstListedComplete) {
+                return FrameId::RootUtilityTieBreakFirstListed;
+            }
+
+            if (scenario == StackScriptScenario::UtilityTieBreakLastListedComplete) {
+                return FrameId::RootUtilityTieBreakLastListed;
+            }
+
             return FrameId::RootContinueThenComplete;
         }
 
@@ -78,16 +180,32 @@ namespace dragongod
             StackRunOutcome outcome,
             const std::vector<StackFrameChunkEntry>& stack,
             const std::vector<std::uint32_t>& dirtySlots,
-            const std::vector<Message>& visibleMailbox)
+            const std::vector<Message>& visibleMailbox,
+            const std::vector<UtilityDecisionTraceEntry>& utilityDecisions)
         {
             return TickTraceEntry{
                 .tick = tick,
                 .outcome = outcome,
                 .stack = stack,
                 .dirtySlots = dirtySlots,
-                .visibleMailbox = visibleMailbox
+                .visibleMailbox = visibleMailbox,
+                .utilityDecisions = utilityDecisions
             };
         }
+
+        [[nodiscard]] float ClampScore01(float value)
+        {
+            if (value < 0.0f) {
+                return 0.0f;
+            }
+
+            if (value > 1.0f) {
+                return 1.0f;
+            }
+
+            return value;
+        }
+
 
         namespace nodes
         {
@@ -100,6 +218,10 @@ namespace dragongod
                 constexpr BbKey<int> SecondMessageValue{ .name = "SecondMessageValue", .slot = 5 };
                 constexpr BbKey<int> SeenPeekValue{ .name = "SeenPeekValue", .slot = 6 };
                 constexpr BbKey<bool> MailboxTriggered{ .name = "MailboxTriggered", .slot = 7 };
+                constexpr BbKey<int> AlertScore{ .name = "AlertScore", .slot = 8 };
+                constexpr BbKey<int> LowAmmoScore{ .name = "LowAmmoScore", .slot = 9 };
+                constexpr BbKey<int> UtilityChoice{ .name = "UtilityChoice", .slot = 10 };
+                constexpr BbKey<int> UtilityDecisionsMade{ .name = "UtilityDecisionsMade", .slot = 11 };
             }
 
             [[nodiscard]] FrameControl RootPushChild(FrameCtx& ctx)
@@ -389,6 +511,205 @@ namespace dragongod
                     return Dg::Fail(408);
                 }
             }
+
+            [[nodiscard]] FrameControl RootUtilityHighestScore(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 10);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 80);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
+                    return Dg::Continue(1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 1) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
+                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                        },
+                        Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
+                default:
+                    return Dg::Fail(500);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootUtilityHysteresis(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 70);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 65);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
+                    return Dg::Continue(1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) == 1) {
+                        ctx.Bb().Set(Keys::AlertScore, 70);
+                        ctx.Bb().Set(Keys::LowAmmoScore, 74);
+                    }
+
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 2) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
+                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                        },
+                        Dg::DecideOptions{
+                            .hysteresis = 0.10f,
+                            .tieBreak = Dg::TieBreakPolicy::KeepCurrent
+                        });
+                default:
+                    return Dg::Fail(501);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootUtilityMinCommit(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 80);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 10);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
+                    return Dg::Continue(1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 1) {
+                        ctx.Bb().Set(Keys::AlertScore, 20);
+                        ctx.Bb().Set(Keys::LowAmmoScore, 90);
+                    }
+
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 4) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
+                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                        },
+                        Dg::DecideOptions{
+                            .minCommitTicks = 2,
+                            .tieBreak = Dg::TieBreakPolicy::KeepCurrent
+                        });
+                default:
+                    return Dg::Fail(502);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootUtilityTieBreakKeepCurrent(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 50);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 20);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
+                    return Dg::Continue(1);
+                case 1:
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) == 1) {
+                        ctx.Bb().Set(Keys::LowAmmoScore, 50);
+                    }
+
+                    if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 2) {
+                        return Dg::Complete();
+                    }
+
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                        },
+                        Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::KeepCurrent });
+                default:
+                    return Dg::Fail(503);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootUtilityTieBreakFirstListed(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 60);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 60);
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                        },
+                        Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
+                case 1:
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(504);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootUtilityTieBreakLastListed(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::AlertScore, 60);
+                    ctx.Bb().Set(Keys::LowAmmoScore, 60);
+                    return Dg::Decide(
+                        ctx,
+                        {
+                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
+                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                        },
+                        Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::LastListed });
+                case 1:
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(505);
+                }
+            }
+
+            [[nodiscard]] FrameControl UtilityActionCombat(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::UtilityChoice, 1);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) + 1);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(506);
+                }
+            }
+
+            [[nodiscard]] FrameControl UtilityActionReload(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::UtilityChoice, 2);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) + 1);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(507);
+                }
+            }
+
+            [[nodiscard]] FrameControl UtilityActionPatrol(FrameCtx& ctx)
+            {
+                switch (ctx.Pc()) {
+                case 0:
+                    ctx.Bb().Set(Keys::UtilityChoice, 3);
+                    ctx.Bb().Set(Keys::UtilityDecisionsMade, ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) + 1);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(508);
+                }
+            }
         }
     }
 
@@ -408,6 +729,26 @@ namespace dragongod
         , entered_(entered)
         , blackboard_(&blackboard)
         , mailbox_(&mailbox)
+    {
+    }
+
+    FrameCtx::FrameCtx(
+        FrameId frameId,
+        TickIndex tick,
+        std::uint32_t pc,
+        bool entered,
+        Blackboard& blackboard,
+        Mailbox& mailbox,
+        UtilityMemoryStore& utilityMemory,
+        std::vector<UtilityDecisionTraceEntry>& utilityTrace)
+        : frameId_(frameId)
+        , tick_(tick)
+        , pc_(pc)
+        , entered_(entered)
+        , blackboard_(&blackboard)
+        , mailbox_(&mailbox)
+        , utilityMemory_(&utilityMemory)
+        , utilityTrace_(&utilityTrace)
     {
     }
 
@@ -436,9 +777,33 @@ namespace dragongod
         return *blackboard_;
     }
 
+    [[nodiscard]] const Blackboard& FrameCtx::Bb() const
+    {
+        return *blackboard_;
+    }
+
     [[nodiscard]] Mailbox& FrameCtx::Mb()
     {
         return *mailbox_;
+    }
+
+    [[nodiscard]] const Mailbox& FrameCtx::Mb() const
+    {
+        return *mailbox_;
+    }
+
+    [[nodiscard]] std::uint32_t FrameCtx::ReadUtilityCommitAge(FrameId frameId) const
+    {
+        if (utilityMemory_ == nullptr) {
+            return 0;
+        }
+
+        const UtilityMemoryStore::Entry* entry = utilityMemory_->Find(frameId);
+        if (entry == nullptr || !entry->hasCommitted) {
+            return 0;
+        }
+
+        return entry->age;
     }
 
     void Mailbox::Enqueue(const Message& message)
@@ -658,8 +1023,129 @@ namespace dragongod
         return nullptr;
     }
 
+    struct DecideAccess
+    {
+        [[nodiscard]] static UtilityMemoryStore* Memory(FrameCtx& ctx)
+        {
+            return ctx.utilityMemory_;
+        }
+
+        [[nodiscard]] static std::vector<UtilityDecisionTraceEntry>* Trace(FrameCtx& ctx)
+        {
+            return ctx.utilityTrace_;
+        }
+    };
+
     namespace Dg
     {
+        [[nodiscard]] UtilityCandidate when(FrameId target, ConsiderationFn consideration)
+        {
+            return UtilityCandidate{
+                .target = target,
+                .consideration = consideration
+            };
+        }
+
+        [[nodiscard]] FrameControl Decide(
+            FrameCtx& ctx,
+            std::initializer_list<UtilityCandidate> candidates,
+            DecideOptions options)
+        {
+            if (candidates.size() == 0) {
+                return Fail(600);
+            }
+
+            UtilityMemoryStore* memory = DecideAccess::Memory(ctx);
+            std::vector<UtilityDecisionTraceEntry>* trace = DecideAccess::Trace(ctx);
+            if (memory == nullptr || trace == nullptr) {
+                return Fail(601);
+            }
+
+            UtilityDecisionTraceEntry traceEntry;
+            traceEntry.decisionFrame = ctx.Id();
+            UtilityMemoryStore::Entry& memoryEntry = memory->Ensure(ctx.Id());
+            traceEntry.hadCommittedBefore = memoryEntry.hasCommitted;
+            traceEntry.committedBefore = memoryEntry.committed;
+            traceEntry.committedAgeBefore = memoryEntry.age;
+
+            float bestScore = -1.0f;
+            std::vector<std::size_t> bestIndices;
+            std::size_t index = 0;
+            for (const UtilityCandidate& candidate : candidates) {
+                float score = 0.0f;
+                if (candidate.consideration != nullptr) {
+                    score = ClampScore01(candidate.consideration(ctx));
+                }
+
+                traceEntry.candidates.push_back(UtilityDecisionCandidateTrace{
+                    .target = candidate.target,
+                    .score = score
+                });
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndices.clear();
+                    bestIndices.push_back(index);
+                } else if (score == bestScore) {
+                    bestIndices.push_back(index);
+                }
+
+                ++index;
+            }
+
+            std::size_t winnerIndex = bestIndices.front();
+            if (bestIndices.size() > 1) {
+                traceEntry.tieBreakUsed = true;
+                if (options.tieBreak == TieBreakPolicy::LastListed) {
+                    winnerIndex = bestIndices.back();
+                } else if (options.tieBreak == TieBreakPolicy::KeepCurrent && memoryEntry.hasCommitted) {
+                    for (const std::size_t tiedIndex : bestIndices) {
+                        if (traceEntry.candidates[tiedIndex].target == memoryEntry.committed) {
+                            winnerIndex = tiedIndex;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            FrameId winner = traceEntry.candidates[winnerIndex].target;
+            const float winnerScore = traceEntry.candidates[winnerIndex].score;
+            float committedScore = 0.0f;
+            bool hasCommittedCandidate = false;
+
+            if (memoryEntry.hasCommitted) {
+                for (const UtilityDecisionCandidateTrace& candidate : traceEntry.candidates) {
+                    if (candidate.target == memoryEntry.committed) {
+                        committedScore = candidate.score;
+                        hasCommittedCandidate = true;
+                        break;
+                    }
+                }
+            }
+
+            if (memoryEntry.hasCommitted && hasCommittedCandidate && winner != memoryEntry.committed) {
+                if (options.minCommitTicks > 0 && memoryEntry.age < static_cast<std::uint32_t>(options.minCommitTicks)) {
+                    winner = memoryEntry.committed;
+                    traceEntry.minCommitBlocked = true;
+                } else if (winnerScore < committedScore + options.hysteresis) {
+                    winner = memoryEntry.committed;
+                    traceEntry.hysteresisBlocked = true;
+                }
+            }
+
+            if (memoryEntry.hasCommitted && winner == memoryEntry.committed) {
+                ++memoryEntry.age;
+            } else {
+                memoryEntry.hasCommitted = true;
+                memoryEntry.committed = winner;
+                memoryEntry.age = 0;
+            }
+
+            traceEntry.chosen = winner;
+            trace->push_back(traceEntry);
+            return Push(winner, ctx.Pc());
+        }
+
         [[nodiscard]] FrameControl Continue(std::uint32_t resumePc)
         {
             return FrameControl{
@@ -717,11 +1203,34 @@ namespace dragongod
         }
     }
 
+    namespace When
+    {
+        [[nodiscard]] float Always(const FrameCtx&)
+        {
+            return 0.25f;
+        }
+
+        [[nodiscard]] float Alerted(const FrameCtx& ctx)
+        {
+            namespace Keys = nodes::Keys;
+            const int raw = ctx.Bb().GetOr(Keys::AlertScore, 0);
+            return ClampScore01(static_cast<float>(raw) / 100.0f);
+        }
+
+        [[nodiscard]] float LowAmmo(const FrameCtx& ctx)
+        {
+            namespace Keys = nodes::Keys;
+            const int raw = ctx.Bb().GetOr(Keys::LowAmmoScore, 0);
+            return ClampScore01(static_cast<float>(raw) / 100.0f);
+        }
+    }
+
     StackFrameRuntimeSession::StackFrameRuntimeSession(
         StackScriptScenario scenario,
         const RuntimeMailboxInput& mailboxInput)
         : scenario_(scenario)
         , registry_(BuildRegistry())
+        , utilityMemory_(new UtilityMemoryStore())
         , scheduledMessages_(mailboxInput.scheduledMessages)
     {
         stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
@@ -735,11 +1244,19 @@ namespace dragongod
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
         , registry_(BuildRegistry())
+        , utilityMemory_(new UtilityMemoryStore())
     {
         stack_ = chunk.stack.frames;
+        utilityMemory_->ImportChunk(chunk.utilityMemory);
         blackboard_.ImportChunk(chunk.blackboard);
         mailbox_.ImportChunk(chunk.mailbox);
         scheduledMessages_ = chunk.scheduledMessages;
+    }
+
+    StackFrameRuntimeSession::~StackFrameRuntimeSession()
+    {
+        delete utilityMemory_;
+        utilityMemory_ = nullptr;
     }
 
     [[nodiscard]] TickIndex StackFrameRuntimeSession::NextTick() const
@@ -767,6 +1284,7 @@ namespace dragongod
             .lastOutcome = lastOutcome_,
             .scheduledMessages = scheduledMessages_,
             .stack = StackChunk{ .frames = stack_ },
+            .utilityMemory = utilityMemory_->ExportChunk(),
             .blackboard = blackboard_.ExportChunk(),
             .mailbox = mailbox_.ExportChunk()
         };
@@ -805,6 +1323,7 @@ namespace dragongod
 
         mailbox_.BeginTick();
         result.visibleMailboxByTick.push_back(mailbox_.VisibleMessages());
+        std::vector<UtilityDecisionTraceEntry> tickUtilityDecisions;
 
         if (stack_.empty()) {
             lastOutcome_ = StackRunOutcome::Completed;
@@ -829,12 +1348,13 @@ namespace dragongod
                 lastOutcome_,
                 stack_,
                 blackboard_.DirtySlots(),
-                mailbox_.VisibleMessages()));
+                mailbox_.VisibleMessages(),
+                tickUtilityDecisions));
             ++nextTick_;
             return true;
         }
 
-        FrameCtx ctx(frame.id, nextTick_, frame.pc, frame.entered, blackboard_, mailbox_);
+        FrameCtx ctx(frame.id, nextTick_, frame.pc, frame.entered, blackboard_, mailbox_, *utilityMemory_, tickUtilityDecisions);
         const FrameFn frameFunction = registry_.Find(frame.id);
         if (frameFunction == nullptr) {
             EmitTrace(result, nextTick_, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
@@ -846,7 +1366,8 @@ namespace dragongod
                 lastOutcome_,
                 stack_,
                 blackboard_.DirtySlots(),
-                mailbox_.VisibleMessages()));
+                mailbox_.VisibleMessages(),
+                tickUtilityDecisions));
             ++nextTick_;
             return false;
         }
@@ -900,7 +1421,8 @@ namespace dragongod
             lastOutcome_,
             stack_,
             blackboard_.DirtySlots(),
-            mailbox_.VisibleMessages()));
+            mailbox_.VisibleMessages(),
+            tickUtilityDecisions));
         ++nextTick_;
         return !IsTerminal();
     }
@@ -926,6 +1448,15 @@ namespace dragongod
         registry.Add(FrameId::RootMailboxParentPushChildConsume, &nodes::RootMailboxParentPushChildConsume);
         registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
         registry.Add(FrameId::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
+        registry.Add(FrameId::RootUtilityHighestScore, &nodes::RootUtilityHighestScore);
+        registry.Add(FrameId::RootUtilityHysteresis, &nodes::RootUtilityHysteresis);
+        registry.Add(FrameId::RootUtilityMinCommit, &nodes::RootUtilityMinCommit);
+        registry.Add(FrameId::RootUtilityTieBreakKeepCurrent, &nodes::RootUtilityTieBreakKeepCurrent);
+        registry.Add(FrameId::RootUtilityTieBreakFirstListed, &nodes::RootUtilityTieBreakFirstListed);
+        registry.Add(FrameId::RootUtilityTieBreakLastListed, &nodes::RootUtilityTieBreakLastListed);
+        registry.Add(FrameId::UtilityActionCombat, &nodes::UtilityActionCombat);
+        registry.Add(FrameId::UtilityActionReload, &nodes::UtilityActionReload);
+        registry.Add(FrameId::UtilityActionPatrol, &nodes::UtilityActionPatrol);
         return registry;
     }
 
@@ -992,6 +1523,27 @@ namespace dragongod
                 line += ",";
                 line += std::to_string(message.value);
                 line += ";";
+            }
+
+            line += "|utility=";
+            for (const UtilityDecisionTraceEntry& decision : entry.utilityDecisions) {
+                line += std::to_string(static_cast<int>(decision.decisionFrame));
+                line += ">";
+                line += std::to_string(static_cast<int>(decision.chosen));
+                line += ":";
+                line += decision.minCommitBlocked ? "m1" : "m0";
+                line += ",";
+                line += decision.hysteresisBlocked ? "h1" : "h0";
+                line += ",";
+                line += decision.tieBreakUsed ? "t1" : "t0";
+                line += "[";
+                for (const UtilityDecisionCandidateTrace& candidate : decision.candidates) {
+                    line += std::to_string(static_cast<int>(candidate.target));
+                    line += "=";
+                    line += std::to_string(candidate.score);
+                    line += ";";
+                }
+                line += "]";
             }
 
             serialized.push_back(line);
