@@ -261,6 +261,10 @@ namespace dragongod
                 return FrameId::RootActUtilityDriven;
             }
 
+            if (scenario == StackScriptScenario::TypedPhaseMailboxActComplete) {
+                return FrameId::RootTypedPhaseMailboxAct;
+            }
+
             return FrameId::RootContinueThenComplete;
         }
 
@@ -322,6 +326,18 @@ namespace dragongod
 
         namespace nodes
         {
+            enum class RootMailboxConsumePhase : std::uint32_t
+            {
+                ConsumeFirst,
+                ConsumeSecond
+            };
+
+            enum class RootTypedPhaseMailboxActPhase : std::uint32_t
+            {
+                AwaitSignal,
+                AwaitAlert
+            };
+
             namespace Keys
             {
                 constexpr BbKey<bool> Alerted{ .name = "Alerted", .slot = 1 };
@@ -510,23 +526,55 @@ namespace dragongod
             [[nodiscard]] FrameControl RootMailboxConsumeFifo(FrameCtx& ctx)
             {
                 Message message;
-                switch (ctx.Pc()) {
-                case 0:
+                switch (ctx.PcAs<RootMailboxConsumePhase>()) {
+                case RootMailboxConsumePhase::ConsumeFirst:
                     if (!ctx.Mb().ConsumeFront(message)) {
-                        return Dg::WaitTicks(1, 0);
+                        return Dg::WaitTicks(1, RootMailboxConsumePhase::ConsumeFirst);
                     }
 
                     ctx.Bb().Set(Keys::FirstMessageValue, message.value);
-                    return Dg::Continue(1);
-                case 1:
+                    return Dg::Continue(RootMailboxConsumePhase::ConsumeSecond);
+                case RootMailboxConsumePhase::ConsumeSecond:
                     if (!ctx.Mb().ConsumeFront(message)) {
-                        return Dg::WaitTicks(1, 1);
+                        return Dg::WaitTicks(1, RootMailboxConsumePhase::ConsumeSecond);
                     }
 
                     ctx.Bb().Set(Keys::SecondMessageValue, message.value);
                     return Dg::Complete();
                 default:
                     return Dg::Fail(400);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootTypedPhaseMailboxAct(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.PcAs<RootTypedPhaseMailboxActPhase>()) {
+                case RootTypedPhaseMailboxActPhase::AwaitSignal:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, RootTypedPhaseMailboxActPhase::AwaitSignal);
+                    }
+
+                    if (message.kind != MessageKind::Signal) {
+                        return Dg::Fail(706);
+                    }
+
+                    ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+                    ctx.Act().Deferred(ActId::RaiseAlarm, 1);
+                    return Dg::Continue(RootTypedPhaseMailboxActPhase::AwaitAlert);
+                case RootTypedPhaseMailboxActPhase::AwaitAlert:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::Stay();
+                    }
+
+                    if (message.kind != MessageKind::Alert) {
+                        return Dg::Fail(707);
+                    }
+
+                    ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(708);
                 }
             }
 
@@ -1396,6 +1444,14 @@ namespace dragongod
             };
         }
 
+        [[nodiscard]] FrameControl Stay()
+        {
+            return FrameControl{
+                .kind = FrameControlKind::Continue,
+                .stayOnCurrentPc = true
+            };
+        }
+
         [[nodiscard]] FrameControl Push(FrameId target, std::uint32_t resumePc)
         {
             return FrameControl{
@@ -1637,7 +1693,9 @@ namespace dragongod
         EmitTrace(result, nextTick_, FrameTraceKind::Step, frame, control.kind, control.target, stack_.size());
 
         if (control.kind == FrameControlKind::Continue) {
-            frame.pc = control.resumePc;
+            if (!control.stayOnCurrentPc) {
+                frame.pc = control.resumePc;
+            }
             lastOutcome_ = StackRunOutcome::Continue;
         } else if (control.kind == FrameControlKind::Wait) {
             frame.pc = control.resumePc;
@@ -1708,6 +1766,7 @@ namespace dragongod
         registry.Add(FrameId::ChildWriteParentCounter, &nodes::ChildWriteParentCounter);
         registry.Add(FrameId::RecoveryComplete, &nodes::RecoveryComplete);
         registry.Add(FrameId::RootMailboxConsumeFifo, &nodes::RootMailboxConsumeFifo);
+        registry.Add(FrameId::RootTypedPhaseMailboxAct, &nodes::RootTypedPhaseMailboxAct);
         registry.Add(FrameId::RootMailboxPeekThenConsume, &nodes::RootMailboxPeekThenConsume);
         registry.Add(FrameId::RootMailboxParentPushChildConsume, &nodes::RootMailboxParentPushChildConsume);
         registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
