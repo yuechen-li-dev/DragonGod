@@ -27,8 +27,6 @@ namespace dragongod_samples::dragon_router
 
     struct RouterScratch
     {
-        bool routeKnown = false;
-        bool egressUsable = false;
         int selectedPort = -1;
     };
 
@@ -51,24 +49,24 @@ namespace dragongod_samples::dragon_router
 
     [[nodiscard]] RouterControl RouteDecisionFrame(RouterFrameCtx& ctx)
     {
-        const RouteEntry* route = FindRoute(ctx.Bb(), ctx.packet.destinationId);
-        if (route == nullptr || !route->healthy) {
-            ctx.scratch.routeKnown = false;
+        const std::vector<RouteEntry> candidates = FindCandidateRoutes(ctx.Bb(), ctx.packet.destinationId);
+        if (candidates.empty()) {
             ctx.trace.push_back("RouteDecision packet=" + std::to_string(ctx.packet.packetId) + " route=unknown");
             return RouterControl{ .kind = RouterControlKind::Continue, .next = RouterPhase::Drop };
         }
 
-        const PortState* port = FindPort(ctx.Bb(), route->egressPort);
-        ctx.scratch.routeKnown = true;
-        ctx.scratch.selectedPort = route->egressPort;
-        ctx.scratch.egressUsable = (port != nullptr) && port->linkUp && !ShouldQueuePacket(*port);
-
-        if (ctx.scratch.egressUsable) {
-            ctx.trace.push_back("RouteDecision packet=" + std::to_string(ctx.packet.packetId) + " action=forward port=" + std::to_string(route->egressPort));
+        const int selectedPort = SelectBestEgressPort(ctx.Bb(), ctx.packet.destinationId);
+        if (selectedPort >= 0) {
+            ctx.scratch.selectedPort = selectedPort;
+            ctx.trace.push_back(
+                "RouteDecision packet=" + std::to_string(ctx.packet.packetId) +
+                " action=forward port=" + std::to_string(selectedPort));
             return RouterControl{ .kind = RouterControlKind::Continue, .next = RouterPhase::Forward };
         }
 
-        ctx.trace.push_back("RouteDecision packet=" + std::to_string(ctx.packet.packetId) + " action=queue port=" + std::to_string(route->egressPort));
+        ctx.trace.push_back(
+            "RouteDecision packet=" + std::to_string(ctx.packet.packetId) +
+            " action=queue reason=no-usable-path");
         return RouterControl{ .kind = RouterControlKind::Continue, .next = RouterPhase::Queue };
     }
 
@@ -79,7 +77,7 @@ namespace dragongod_samples::dragon_router
             .kind = ActuationKind::ForwardPort,
             .packetId = ctx.packet.packetId,
             .portId = ctx.scratch.selectedPort,
-            .reason = "KnownHealthyRoute"
+            .reason = "UtilitySelectedPath"
         });
         ctx.trace.push_back("Forward packet=" + std::to_string(ctx.packet.packetId) + " port=" + std::to_string(ctx.scratch.selectedPort));
         return RouterControl{ .kind = RouterControlKind::Complete, .next = RouterPhase::Completed };
@@ -88,14 +86,20 @@ namespace dragongod_samples::dragon_router
     [[nodiscard]] RouterControl QueueFrame(RouterFrameCtx& ctx)
     {
         ctx.Bb().queuedCount += 1;
-        ctx.Bb().queuedPackets.push_back(QueueEntry{ .packet = ctx.packet, .targetPort = ctx.scratch.selectedPort });
+        ctx.Bb().queuedPackets.push_back(QueueEntry{
+            .packet = ctx.packet,
+            .retryCount = 0,
+            .nextRetryTick = ctx.Bb().currentTick + ctx.Bb().retryDelayTicks
+        });
         ctx.actuation.push_back(Actuation{
             .kind = ActuationKind::QueuePacket,
             .packetId = ctx.packet.packetId,
-            .portId = ctx.scratch.selectedPort,
-            .reason = "EgressUnavailableOrCongested"
+            .portId = -1,
+            .reason = "AllCandidatePathsUnavailable"
         });
-        ctx.trace.push_back("Queue packet=" + std::to_string(ctx.packet.packetId) + " port=" + std::to_string(ctx.scratch.selectedPort));
+        ctx.trace.push_back(
+            "Queue packet=" + std::to_string(ctx.packet.packetId) +
+            " retry-at=" + std::to_string(ctx.Bb().currentTick + ctx.Bb().retryDelayTicks));
         return RouterControl{ .kind = RouterControlKind::Complete, .next = RouterPhase::Completed };
     }
 
@@ -143,7 +147,7 @@ namespace dragongod_samples::dragon_router
             case RouterPhase::Queue:
                 control = QueueFrame(ctx);
                 result.outcome = PacketOutcomeKind::Queued;
-                result.selectedPort = scratch.selectedPort;
+                result.selectedPort = -1;
                 break;
             case RouterPhase::Drop:
                 control = DropFrame(ctx);

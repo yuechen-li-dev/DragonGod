@@ -30,6 +30,7 @@ namespace dragongod_samples::dragon_router
         int portId = 0;
         bool linkUp = true;
         bool queueFull = false;
+        int congestionScore = 0;
 
         [[nodiscard]] bool operator==(const PortState& other) const = default;
     };
@@ -37,7 +38,8 @@ namespace dragongod_samples::dragon_router
     struct QueueEntry
     {
         Packet packet{};
-        int targetPort = 0;
+        int retryCount = 0;
+        int nextRetryTick = 0;
 
         [[nodiscard]] bool operator==(const QueueEntry& other) const = default;
     };
@@ -50,6 +52,9 @@ namespace dragongod_samples::dragon_router
         int forwardedCount = 0;
         int droppedCount = 0;
         int queuedCount = 0;
+        int drainedCount = 0;
+        int currentTick = 0;
+        int retryDelayTicks = 1;
 
         [[nodiscard]] bool operator==(const RouterState& other) const = default;
     };
@@ -65,7 +70,9 @@ namespace dragongod_samples::dragon_router
     {
         ForwardPort,
         DropPacket,
-        QueuePacket
+        QueuePacket,
+        RetryDeferred,
+        DrainForwarded
     };
 
     struct Actuation
@@ -98,8 +105,12 @@ namespace dragongod_samples::dragon_router
     };
 
     [[nodiscard]] const RouteEntry* FindRoute(const RouterState& state, int destinationId);
+    [[nodiscard]] std::vector<RouteEntry> FindCandidateRoutes(const RouterState& state, int destinationId);
     [[nodiscard]] const PortState* FindPort(const RouterState& state, int portId);
     [[nodiscard]] bool ShouldQueuePacket(const PortState& port);
+    [[nodiscard]] bool IsPortUsable(const PortState& port);
+    [[nodiscard]] int PortUtilityScore(const PortState& port);
+    [[nodiscard]] int SelectBestEgressPort(const RouterState& state, int destinationId);
 
     [[nodiscard]] RouterRunOutput RunRouterGoldenPath(
         const RouterState& initialState,

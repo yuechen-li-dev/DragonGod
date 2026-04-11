@@ -11,14 +11,16 @@ namespace
     {
         RouterState state{};
         state.routes.push_back(RouteEntry{ .destinationId = 10, .egressPort = 1, .healthy = true });
-        state.routes.push_back(RouteEntry{ .destinationId = 11, .egressPort = 2, .healthy = true });
-        state.ports.push_back(PortState{ .portId = 1, .linkUp = true, .queueFull = false });
-        state.ports.push_back(PortState{ .portId = 2, .linkUp = true, .queueFull = true });
+        state.routes.push_back(RouteEntry{ .destinationId = 10, .egressPort = 2, .healthy = true });
+        state.routes.push_back(RouteEntry{ .destinationId = 11, .egressPort = 3, .healthy = true });
+        state.ports.push_back(PortState{ .portId = 1, .linkUp = true, .queueFull = false, .congestionScore = 90 });
+        state.ports.push_back(PortState{ .portId = 2, .linkUp = true, .queueFull = false, .congestionScore = 5 });
+        state.ports.push_back(PortState{ .portId = 3, .linkUp = true, .queueFull = true, .congestionScore = 50 });
         return state;
     }
 }
 
-FACT(M12a_Runtime_GoldenPath_CoversForwardDropQueue)
+FACT(M12b_Runtime_GoldenPath_CoversUtilityForwardDropQueue)
 {
     const std::vector<Packet> packets{
         Packet{ .packetId = 100, .destinationId = 10, .ingressPort = 8, .priority = 0, .sizeBytes = 100 },
@@ -28,18 +30,56 @@ FACT(M12a_Runtime_GoldenPath_CoversForwardDropQueue)
 
     const RouterRunOutput run = RunRouterGoldenPath(BuildStateForRuntime(), packets);
 
-    ASSERT_EQUAL(1, run.finalState.forwardedCount, "golden path should forward known healthy route");
-    ASSERT_EQUAL(1, run.finalState.droppedCount, "golden path should drop unknown route");
-    ASSERT_EQUAL(1, run.finalState.queuedCount, "golden path should queue blocked egress packet");
+    ASSERT_EQUAL(1, run.finalState.forwardedCount, "runtime path should forward one known destination packet");
+    ASSERT_EQUAL(1, run.finalState.droppedCount, "runtime path should drop unknown route");
+    ASSERT_EQUAL(1, run.finalState.queuedCount, "runtime path should queue blocked destination packet");
+    ASSERT_EQUAL(2, run.packetResults[0].selectedPort, "utility path selection should pick lower-pressure candidate");
     ASSERT_EQUAL(3, static_cast<int>(run.packetResults.size()), "each packet should produce one result");
 }
 
-FACT(M12a_Runtime_Replay_IsDeterministic)
+FACT(M12b_Runtime_DegradedPrimary_UsesAlternatePath)
+{
+    RouterState state = BuildStateForRuntime();
+    state.ports[0].queueFull = true;
+    state.ports[1].queueFull = false;
+
+    const Packet packet{ .packetId = 200, .destinationId = 10, .ingressPort = 8, .priority = 1, .sizeBytes = 64 };
+    const RouterRunOutput run = RunRouterGoldenPath(state, { packet });
+
+    ASSERT_EQUAL(
+        static_cast<int>(PacketOutcomeKind::Forwarded),
+        static_cast<int>(run.packetResults[0].outcome),
+        "alternate path should still forward");
+    ASSERT_EQUAL(2, run.packetResults[0].selectedPort, "blocked primary should route to viable alternate path");
+}
+
+FACT(M12b_Runtime_QueuedPacketDrainsAfterDeferredRetry)
+{
+    RouterState initial = BuildStateForRuntime();
+    initial.ports[2].queueFull = true;
+
+    const Packet firstPacket{ .packetId = 300, .destinationId = 11, .ingressPort = 8, .priority = 1, .sizeBytes = 64 };
+    const RouterRunOutput runA = RunRouterGoldenPath(initial, { firstPacket });
+
+    ASSERT_EQUAL(1, static_cast<int>(runA.finalState.queuedPackets.size()), "first run should queue packet when no usable path exists");
+
+    RouterState retryState = runA.finalState;
+    retryState.ports[2].queueFull = false;
+
+    const RouterRunOutput runB = RunRouterGoldenPath(retryState, {});
+
+    ASSERT_EQUAL(0, static_cast<int>(runB.finalState.queuedPackets.size()), "retry pass should drain queued packet when path recovers");
+    ASSERT_EQUAL(1, runB.finalState.drainedCount, "drain counter should record deferred forward");
+    ASSERT_EQUAL(static_cast<int>(ActuationKind::DrainForwarded), static_cast<int>(runB.actuation[0].kind), "deferred retry should emit drain-forwarded actuation");
+    ASSERT_EQUAL(3, runB.actuation[0].portId, "drained packet should forward through recovered path");
+}
+
+FACT(M12b_Runtime_Replay_IsDeterministic)
 {
     const std::vector<Packet> packets{
-        Packet{ .packetId = 200, .destinationId = 10, .ingressPort = 8, .priority = 1, .sizeBytes = 64 },
-        Packet{ .packetId = 201, .destinationId = 11, .ingressPort = 8, .priority = 1, .sizeBytes = 64 },
-        Packet{ .packetId = 202, .destinationId = 99, .ingressPort = 8, .priority = 1, .sizeBytes = 64 }
+        Packet{ .packetId = 400, .destinationId = 10, .ingressPort = 8, .priority = 1, .sizeBytes = 64 },
+        Packet{ .packetId = 401, .destinationId = 11, .ingressPort = 8, .priority = 1, .sizeBytes = 64 },
+        Packet{ .packetId = 402, .destinationId = 99, .ingressPort = 8, .priority = 1, .sizeBytes = 64 }
     };
 
     const RouterRunOutput runA = RunRouterGoldenPath(BuildStateForRuntime(), packets);
