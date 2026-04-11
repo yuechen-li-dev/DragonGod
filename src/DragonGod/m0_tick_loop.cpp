@@ -15,7 +15,7 @@ namespace dragongod
             });
             result.finalOutcome = outcome;
 
-            if (outcome == StepOutcome::Completed) {
+            if (IsTerminal(outcome)) {
                 break;
             }
         }
@@ -25,12 +25,30 @@ namespace dragongod
 
     [[nodiscard]] StepOutcome Runtime::StepAgent(AgentRuntimeState& state)
     {
-        ++state.counter;
+        if (state.scenario == ScriptScenario::ContinueWaitComplete) {
+            if (!state.waitConsumed && state.counter == state.waitCounter) {
+                state.waitConsumed = true;
+                return StepOutcome::Wait;
+            }
 
-        if (state.counter >= state.completionCounter) {
-            return StepOutcome::Completed;
+            ++state.counter;
+            if (state.counter >= state.completionCounter) {
+                return StepOutcome::Completed;
+            }
+
+            return StepOutcome::Continue;
+        }
+
+        ++state.counter;
+        if (state.counter >= state.failureCounter) {
+            return StepOutcome::Failed;
         }
 
         return StepOutcome::Continue;
+    }
+
+    [[nodiscard]] bool Runtime::IsTerminal(StepOutcome outcome)
+    {
+        return outcome == StepOutcome::Completed || outcome == StepOutcome::Failed;
     }
 }
