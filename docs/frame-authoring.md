@@ -53,13 +53,15 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
   - move to another phase on next tick.
 - `Dg::WaitTicks(ticks, resume)`
   - wait for `ticks` tick boundaries, then run this frame again at `resume`.
-  - `WaitTicks(1, resume)` runs again next tick; `WaitTicks(2, resume)` skips one full tick and runs on the following tick.
+  - `WaitTicks(1, resume)` resumes on the immediately following tick (no skipped intervening tick).
+  - `WaitTicks(2, resume)` skips one full intervening tick and runs on the tick after that.
   - `WaitTicks(0, resume)` is a sharp-edge do-not: today it still resumes on the next tick in practice, so it is not a meaningful wait duration.
   - if no real wait is intended, use `Continue(...)` instead of `WaitTicks(0, ...)`.
 - `Dg::Stay()`
   - continue without changing pc (implemented as continue-with-stay flag).
 - `Dg::Push(child, resumePc)`
-  - call-like child frame activation; parent resumes later at `resumePc`.
+  - call-like child frame activation; the child becomes the new top frame and begins executing on the next tick.
+  - the parent resumes later at `resumePc` after the child pops/completes.
 - `Dg::Pop()`
   - return from a child frame.
 - `Dg::Replace(frame)`
@@ -68,6 +70,7 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
   - terminal-complete this frame.
 - `Dg::Fail(reason)`
   - terminal-fail this frame/runtime.
+  - `reason` is an author/debugging tag; it is not part of the high-level `finalOutcome` or tick-trace surface.
 
 ### Current typed-phase asymmetry (intentional, not a docs bug)
 
@@ -229,6 +232,10 @@ Why: utility commitment/hysteresis/min-commit state is managed in runtime utilit
 
 ## Worked examples aligned to `runtime_nodes.cpp`
 
+These are real current examples grounded in `runtime_nodes.cpp`.
+Some excerpts still use raw `ctx.Pc()` integers because that is what the current in-repo implementation uses in those specific frames.
+For new multi-phase authored code, typed phases (`PcAs<TEnum>()`, typed `Continue(...)`, typed `WaitTicks(...)`) remain the preferred style.
+
 ### A) Typed phase + mailbox + wait/continue (`RootMailboxConsumeFifo`)
 
 Real implementation excerpt (condensed):
@@ -353,8 +360,9 @@ Real implementation excerpt (condensed):
 Why this is canonical:
 
 - parent pushes child with explicit parent resume pc.
+- after `Push`, the child becomes the new top frame and starts executing on the next tick.
 - child terminates with `Pop()` instead of parent bookkeeping.
-- parent resumes at the declared continuation point and finishes.
+- after `Pop`, the parent resumes at the declared continuation point on a later tick and finishes.
 
 ### D) Replace to abandon current frame state (`RootReplace` -> `RecoveryComplete`)
 
@@ -389,6 +397,10 @@ Why this uses `Replace` (instead of `Pop` + `Push`):
 - the replaced frame state (its `pc`, wait countdown, and future progression path) is discarded in practice; execution continues in the replacement frame (`RecoveryComplete`) as a fresh top-of-stack frame.
 
 ### E) Utility-driven action frame selection
+
+This example explicitly overrides the default tie-break behavior with `FirstListed`.
+If you omit `DecideOptions`, the runtime uses the documented `DecideOptions` defaults from `runtime-truth.md`.
+
 
 Real implementation excerpt (condensed):
 
