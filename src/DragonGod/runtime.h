@@ -1,0 +1,644 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
+
+namespace dragongod
+{
+    using TickIndex = std::size_t;
+
+    enum class StackRunOutcome
+    {
+        Continue,
+        Wait,
+        Completed,
+        Failed
+    };
+
+    enum class FrameId
+    {
+        RootPushChild,
+        RootReplace,
+        RootWaitThenPush,
+        RootPushFailingChild,
+        RootContinueThenComplete,
+        RootSetThenReadBlackboard,
+        RootFallbackBranch,
+        RootParentChildBlackboard,
+        ChildPop,
+        ChildFail,
+        ChildReadParentBool,
+        ChildWriteParentCounter,
+        RecoveryComplete,
+        RootMailboxConsumeFifo,
+        RootMailboxPeekThenConsume,
+        RootMailboxParentPushChildConsume,
+        RootMailboxEnqueueDuringTick,
+        ChildMailboxConsumeAndPop,
+        RootUtilityHighestScore,
+        RootUtilityHysteresis,
+        RootUtilityMinCommit,
+        RootUtilityTieBreakKeepCurrent,
+        RootUtilityTieBreakFirstListed,
+        RootUtilityTieBreakLastListed,
+        UtilityActionCombat,
+        UtilityActionReload,
+        UtilityActionPatrol,
+        RootActImmediateDeferred,
+        RootActOrderedDeferred,
+        RootActParentPushChild,
+        ChildActImmediate,
+        RootActUtilityDriven,
+        RootTypedPhaseMailboxAct
+    };
+
+    enum class FrameControlKind
+    {
+        Continue,
+        Wait,
+        Push,
+        Pop,
+        Replace,
+        Complete,
+        Fail
+    };
+
+    enum class FrameTraceKind
+    {
+        Tick,
+        Enter,
+        Step,
+        Push,
+        Pop,
+        Replace,
+        ExitCompleted,
+        ExitFailed,
+        TerminalCompleted,
+        TerminalFailed
+    };
+
+    enum class StackScriptScenario
+    {
+        PushPopComplete,
+        ReplaceComplete,
+        WaitPushPopComplete,
+        PushChildFail,
+        ContinueThenComplete,
+        BlackboardSetReadComplete,
+        BlackboardFallbackComplete,
+        BlackboardParentChildComplete,
+        MailboxConsumeFifoComplete,
+        MailboxPeekThenConsumeComplete,
+        MailboxParentChildConsumeComplete,
+        MailboxEnqueueDuringTickComplete,
+        UtilityHighestScoreComplete,
+        UtilityHysteresisComplete,
+        UtilityMinCommitComplete,
+        UtilityTieBreakKeepCurrentComplete,
+        UtilityTieBreakFirstListedComplete,
+        UtilityTieBreakLastListedComplete,
+        ActImmediateDeferredComplete,
+        ActOrderedDeferredComplete,
+        ActParentPushChildComplete,
+        ActUtilityDrivenComplete,
+        TypedPhaseMailboxActComplete
+    };
+
+    enum class ActId
+    {
+        PlayBark,
+        RaiseAlarm,
+        OpenDoor,
+        UtilityCombat,
+        UtilityReload
+    };
+
+    struct ActRequest
+    {
+        ActId id = ActId::PlayBark;
+        bool deferred = false;
+        TickIndex emittedTick = 0;
+        TickIndex dueTick = 0;
+        std::uint32_t delayTicks = 0;
+
+        [[nodiscard]] bool operator==(const ActRequest& other) const = default;
+    };
+
+    struct DeferredActChunkEntry
+    {
+        ActId id = ActId::PlayBark;
+        TickIndex dueTick = 0;
+        TickIndex emittedTick = 0;
+        std::uint32_t delayTicks = 0;
+
+        [[nodiscard]] bool operator==(const DeferredActChunkEntry& other) const = default;
+    };
+
+    class ActRuntime;
+
+    class ActCtx
+    {
+    public:
+        ActCtx();
+        explicit ActCtx(ActRuntime& runtime);
+        void Immediate(ActId id);
+        void Deferred(ActId id, std::uint32_t delayTicks);
+
+    private:
+        ActRuntime* runtime_ = nullptr;
+    };
+
+    enum class MessageKind
+    {
+        Signal,
+        Alert
+    };
+
+    struct Message
+    {
+        MessageKind kind = MessageKind::Signal;
+        int value = 0;
+
+        [[nodiscard]] bool operator==(const Message& other) const = default;
+    };
+
+    struct ScheduledMessage
+    {
+        TickIndex tick = 0;
+        Message message{};
+
+        [[nodiscard]] bool operator==(const ScheduledMessage& other) const = default;
+    };
+
+    struct RuntimeMailboxInput
+    {
+        std::vector<Message> initialMessages;
+        std::vector<ScheduledMessage> scheduledMessages;
+    };
+
+    struct MailboxChunk
+    {
+        std::vector<Message> visibleMessages;
+        std::vector<Message> stagedMessages;
+
+        [[nodiscard]] bool operator==(const MailboxChunk& other) const = default;
+    };
+
+    class Mailbox
+    {
+    public:
+        void Enqueue(const Message& message);
+        void BeginTick();
+        [[nodiscard]] bool HasMessage() const;
+        [[nodiscard]] bool PeekFront(Message& message) const;
+        [[nodiscard]] bool ConsumeFront(Message& message);
+        [[nodiscard]] const std::vector<Message>& VisibleMessages() const;
+        [[nodiscard]] const std::vector<Message>& StagedMessages() const;
+        [[nodiscard]] MailboxChunk ExportChunk() const;
+        void ImportChunk(const MailboxChunk& chunk);
+
+    private:
+        std::vector<Message> visible_;
+        std::vector<Message> staged_;
+    };
+
+    template <typename T>
+    struct BbKey
+    {
+        std::string_view name{};
+        std::uint32_t slot = 0;
+    };
+
+    class Blackboard
+    {
+    public:
+        struct BoolChunkEntry
+        {
+            std::uint32_t slot = 0;
+            bool value = false;
+
+            [[nodiscard]] bool operator==(const BoolChunkEntry& other) const = default;
+        };
+
+        struct IntChunkEntry
+        {
+            std::uint32_t slot = 0;
+            int value = 0;
+
+            [[nodiscard]] bool operator==(const IntChunkEntry& other) const = default;
+        };
+
+        struct Chunk
+        {
+            std::vector<BoolChunkEntry> boolEntries;
+            std::vector<IntChunkEntry> intEntries;
+            std::vector<std::uint32_t> dirtySlots;
+
+            [[nodiscard]] bool operator==(const Chunk& other) const = default;
+        };
+
+        template <typename T>
+        void Set(BbKey<T> key, const T& value);
+
+        template <typename T>
+        [[nodiscard]] bool TryGet(BbKey<T> key, T& value) const;
+
+        template <typename T>
+        [[nodiscard]] T GetOr(BbKey<T> key, const T& fallback) const;
+
+        template <typename T>
+        [[nodiscard]] bool IsDirty(BbKey<T> key) const;
+
+        [[nodiscard]] const std::vector<std::uint32_t>& DirtySlots() const;
+        void ClearDirty();
+        [[nodiscard]] Chunk ExportChunk() const;
+        void ImportChunk(const Chunk& chunk);
+
+    private:
+        struct BoolEntry
+        {
+            std::uint32_t slot = 0;
+            bool value = false;
+        };
+
+        struct IntEntry
+        {
+            std::uint32_t slot = 0;
+            int value = 0;
+        };
+
+        template <typename T>
+        [[nodiscard]] const T* FindValue(std::uint32_t slot) const;
+
+        template <typename T>
+        void UpsertValue(std::uint32_t slot, const T& value);
+
+        void MarkDirty(std::uint32_t slot);
+        [[nodiscard]] bool HasDirtySlot(std::uint32_t slot) const;
+
+        std::vector<BoolEntry> boolEntries_;
+        std::vector<IntEntry> intEntries_;
+        std::vector<std::uint32_t> dirtySlots_;
+    };
+
+    struct FrameControl
+    {
+        FrameControlKind kind = FrameControlKind::Continue;
+        std::uint32_t resumePc = 0;
+        std::uint32_t waitTicks = 0;
+        FrameId target = FrameId::RootPushChild;
+        int failReason = 0;
+        bool stayOnCurrentPc = false;
+    };
+
+    struct UtilityDecisionCandidateTrace
+    {
+        FrameId target = FrameId::RootPushChild;
+        float score = 0.0f;
+
+        [[nodiscard]] bool operator==(const UtilityDecisionCandidateTrace& other) const = default;
+    };
+
+    struct UtilityDecisionTraceEntry
+    {
+        FrameId decisionFrame = FrameId::RootPushChild;
+        std::vector<UtilityDecisionCandidateTrace> candidates;
+        bool hadCommittedBefore = false;
+        FrameId committedBefore = FrameId::RootPushChild;
+        std::uint32_t committedAgeBefore = 0;
+        FrameId chosen = FrameId::RootPushChild;
+        bool minCommitBlocked = false;
+        bool hysteresisBlocked = false;
+        bool tieBreakUsed = false;
+
+        [[nodiscard]] bool operator==(const UtilityDecisionTraceEntry& other) const = default;
+    };
+
+    struct UtilityMemoryChunkEntry
+    {
+        FrameId frame = FrameId::RootPushChild;
+        bool hasCommitted = false;
+        FrameId committed = FrameId::RootPushChild;
+        std::uint32_t age = 0;
+
+        [[nodiscard]] bool operator==(const UtilityMemoryChunkEntry& other) const = default;
+    };
+
+    class UtilityMemoryStore;
+
+    class FrameCtx
+    {
+    public:
+        FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard);
+        FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard, Mailbox& mailbox);
+
+        [[nodiscard]] FrameId Id() const;
+        [[nodiscard]] TickIndex Tick() const;
+        [[nodiscard]] std::uint32_t Pc() const;
+        template <typename TEnum>
+        [[nodiscard]] TEnum PcAs() const;
+        [[nodiscard]] bool Entered() const;
+        [[nodiscard]] Blackboard& Bb();
+        [[nodiscard]] const Blackboard& Bb() const;
+        [[nodiscard]] Mailbox& Mb();
+        [[nodiscard]] const Mailbox& Mb() const;
+        [[nodiscard]] ActCtx& Act();
+        [[nodiscard]] const ActCtx& Act() const;
+        [[nodiscard]] std::uint32_t ReadUtilityCommitAge(FrameId frameId) const;
+
+    private:
+        FrameId frameId_;
+        TickIndex tick_;
+        std::uint32_t pc_;
+        bool entered_;
+        Blackboard* blackboard_ = nullptr;
+        Mailbox* mailbox_ = nullptr;
+        ActCtx act_;
+        UtilityMemoryStore* utilityMemory_ = nullptr;
+        std::vector<UtilityDecisionTraceEntry>* utilityTrace_ = nullptr;
+
+        FrameCtx(
+            FrameId frameId,
+            TickIndex tick,
+            std::uint32_t pc,
+            bool entered,
+            Blackboard& blackboard,
+            Mailbox& mailbox,
+            ActRuntime& actRuntime,
+            UtilityMemoryStore& utilityMemory,
+            std::vector<UtilityDecisionTraceEntry>& utilityTrace);
+
+        friend class StackFrameRuntimeSession;
+        friend struct DecideAccess;
+    };
+
+    using FrameFn = FrameControl (*)(FrameCtx& ctx);
+
+    struct FrameDef
+    {
+        FrameId id = FrameId::RootPushChild;
+        FrameFn function = nullptr;
+    };
+
+    class FrameRegistry
+    {
+    public:
+        void Add(FrameId id, FrameFn function);
+        [[nodiscard]] FrameFn Find(FrameId id) const;
+
+    private:
+        std::vector<FrameDef> definitions_;
+    };
+
+    namespace Dg
+    {
+        using ConsiderationFn = float (*)(const FrameCtx& ctx);
+
+        struct UtilityCandidate
+        {
+            FrameId target = FrameId::RootPushChild;
+            ConsiderationFn consideration = nullptr;
+        };
+
+        enum class TieBreakPolicy
+        {
+            KeepCurrent,
+            FirstListed,
+            LastListed
+        };
+
+        struct DecideOptions
+        {
+            float hysteresis = 0.0f;
+            int minCommitTicks = 0;
+            TieBreakPolicy tieBreak = TieBreakPolicy::KeepCurrent;
+        };
+
+        [[nodiscard]] UtilityCandidate when(FrameId target, ConsiderationFn consideration);
+        [[nodiscard]] FrameControl Decide(
+            FrameCtx& ctx,
+            std::initializer_list<UtilityCandidate> candidates,
+            DecideOptions options = {});
+
+        [[nodiscard]] FrameControl Continue(std::uint32_t resumePc);
+        [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, std::uint32_t resumePc);
+        [[nodiscard]] FrameControl Stay();
+        [[nodiscard]] FrameControl Push(FrameId target, std::uint32_t resumePc);
+        [[nodiscard]] FrameControl Pop();
+        [[nodiscard]] FrameControl Replace(FrameId target);
+        [[nodiscard]] FrameControl Complete();
+        [[nodiscard]] FrameControl Fail(int reason);
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl Continue(TEnum resumePhase);
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, TEnum resumePhase);
+    }
+
+    struct FrameTraceEvent
+    {
+        TickIndex tick = 0;
+        FrameTraceKind kind = FrameTraceKind::Tick;
+        FrameId activeFrame = FrameId::RootPushChild;
+        std::uint32_t framePc = 0;
+        FrameControlKind control = FrameControlKind::Continue;
+        FrameId targetFrame = FrameId::RootPushChild;
+        std::size_t stackDepth = 0;
+
+        [[nodiscard]] bool operator==(const FrameTraceEvent& other) const = default;
+    };
+
+    struct StackFrameChunkEntry
+    {
+        FrameId id = FrameId::RootPushChild;
+        std::uint32_t pc = 0;
+        bool entered = false;
+        std::uint32_t remainingWaitTicks = 0;
+
+        [[nodiscard]] bool operator==(const StackFrameChunkEntry& other) const = default;
+    };
+
+    struct StackChunk
+    {
+        std::vector<StackFrameChunkEntry> frames;
+
+        [[nodiscard]] bool operator==(const StackChunk& other) const = default;
+    };
+
+    struct TickTraceEntry
+    {
+        TickIndex tick = 0;
+        StackRunOutcome outcome = StackRunOutcome::Continue;
+        std::vector<StackFrameChunkEntry> stack;
+        std::vector<std::uint32_t> dirtySlots;
+        std::vector<Message> visibleMailbox;
+        std::vector<UtilityDecisionTraceEntry> utilityDecisions;
+        std::vector<ActRequest> emittedActuation;
+        std::vector<ActRequest> pendingDeferredActuation;
+
+        [[nodiscard]] bool operator==(const TickTraceEntry& other) const = default;
+    };
+
+    struct TraceComparisonResult
+    {
+        bool matches = true;
+        std::size_t firstMismatchIndex = 0;
+        std::string mismatchReason;
+        TickTraceEntry expected;
+        TickTraceEntry actual;
+        std::size_t expectedEntryCount = 0;
+        std::size_t actualEntryCount = 0;
+    };
+
+    struct [[nodiscard]] FrameRunResult
+    {
+        StackRunOutcome finalOutcome = StackRunOutcome::Continue;
+        std::vector<FrameTraceEvent> trace;
+        std::vector<TickTraceEntry> tickTrace;
+        std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
+        std::vector<std::vector<Message>> visibleMailboxByTick;
+        std::vector<std::vector<ActRequest>> actuationByTick;
+        Blackboard finalBlackboard;
+    };
+
+    [[nodiscard]] TraceComparisonResult CompareTickTraces(
+        const std::vector<TickTraceEntry>& expected,
+        const std::vector<TickTraceEntry>& actual);
+    [[nodiscard]] std::vector<std::string> SerializeTickTrace(const std::vector<TickTraceEntry>& trace);
+    [[nodiscard]] std::string FormatTraceComparison(const TraceComparisonResult& comparison);
+
+    struct RuntimeChunk
+    {
+        StackScriptScenario scenario = StackScriptScenario::PushPopComplete;
+        TickIndex nextTick = 0;
+        StackRunOutcome lastOutcome = StackRunOutcome::Continue;
+        std::vector<ScheduledMessage> scheduledMessages;
+        StackChunk stack;
+        std::vector<UtilityMemoryChunkEntry> utilityMemory;
+        std::vector<DeferredActChunkEntry> deferredActuation;
+        Blackboard::Chunk blackboard;
+        MailboxChunk mailbox;
+
+        [[nodiscard]] bool operator==(const RuntimeChunk& other) const = default;
+    };
+
+    class StackFrameRuntimeSession
+    {
+    public:
+        StackFrameRuntimeSession(StackScriptScenario scenario, const RuntimeMailboxInput& mailboxInput);
+        explicit StackFrameRuntimeSession(const RuntimeChunk& chunk);
+        ~StackFrameRuntimeSession();
+
+        [[nodiscard]] TickIndex NextTick() const;
+        [[nodiscard]] StackRunOutcome LastOutcome() const;
+        [[nodiscard]] bool IsTerminal() const;
+        [[nodiscard]] RuntimeChunk Save() const;
+
+        [[nodiscard]] FrameRunResult RunForTicks(TickIndex tickCount);
+
+    private:
+        [[nodiscard]] static FrameRegistry BuildRegistry();
+        [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
+
+        StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
+        TickIndex nextTick_ = 0;
+        StackRunOutcome lastOutcome_ = StackRunOutcome::Continue;
+        FrameRegistry registry_;
+        Blackboard blackboard_;
+        Mailbox mailbox_;
+        std::vector<ScheduledMessage> scheduledMessages_;
+        std::vector<StackFrameChunkEntry> stack_;
+        std::unique_ptr<ActRuntime> actRuntime_;
+        std::unique_ptr<UtilityMemoryStore> utilityMemory_;
+    };
+
+    class StackFrameRuntime
+    {
+    public:
+        [[nodiscard]] FrameRunResult RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const;
+        [[nodiscard]] FrameRunResult RunForTicks(
+            StackScriptScenario scenario,
+            TickIndex tickCount,
+            const RuntimeMailboxInput& mailboxInput) const;
+    };
+
+    namespace When
+    {
+        [[nodiscard]] float Always(const FrameCtx& ctx);
+        [[nodiscard]] float Alerted(const FrameCtx& ctx);
+        [[nodiscard]] float LowAmmo(const FrameCtx& ctx);
+    }
+
+    template <typename T>
+    void Blackboard::Set(BbKey<T> key, const T& value)
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        UpsertValue<T>(key.slot, value);
+        MarkDirty(key.slot);
+    }
+
+    template <typename T>
+    [[nodiscard]] bool Blackboard::TryGet(BbKey<T> key, T& value) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        const T* found = FindValue<T>(key.slot);
+        if (found == nullptr) {
+            return false;
+        }
+
+        value = *found;
+        return true;
+    }
+
+    template <typename T>
+    [[nodiscard]] T Blackboard::GetOr(BbKey<T> key, const T& fallback) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        const T* found = FindValue<T>(key.slot);
+        if (found == nullptr) {
+            return fallback;
+        }
+
+        return *found;
+    }
+
+    template <typename T>
+    [[nodiscard]] bool Blackboard::IsDirty(BbKey<T> key) const
+    {
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        return HasDirtySlot(key.slot);
+    }
+
+    template <typename TEnum>
+    [[nodiscard]] TEnum FrameCtx::PcAs() const
+    {
+        static_assert(std::is_enum_v<TEnum>, "PcAs requires an enum phase type");
+        return static_cast<TEnum>(pc_);
+    }
+
+    namespace Dg
+    {
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl Continue(TEnum resumePhase)
+        {
+            return Continue(static_cast<std::uint32_t>(resumePhase));
+        }
+
+        template <typename TEnum>
+            requires(std::is_enum_v<TEnum>)
+        [[nodiscard]] FrameControl WaitTicks(std::uint32_t ticks, TEnum resumePhase)
+        {
+            return WaitTicks(ticks, static_cast<std::uint32_t>(resumePhase));
+        }
+    }
+}
