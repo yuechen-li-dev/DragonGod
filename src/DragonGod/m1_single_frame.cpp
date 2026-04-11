@@ -73,6 +73,22 @@ namespace dragongod
             });
         }
 
+        [[nodiscard]] TickTraceEntry MakeTickTraceEntry(
+            TickIndex tick,
+            StackRunOutcome outcome,
+            const std::vector<StackFrameChunkEntry>& stack,
+            const std::vector<std::uint32_t>& dirtySlots,
+            const std::vector<Message>& visibleMailbox)
+        {
+            return TickTraceEntry{
+                .tick = tick,
+                .outcome = outcome,
+                .stack = stack,
+                .dirtySlots = dirtySlots,
+                .visibleMailbox = visibleMailbox
+            };
+        }
+
         namespace nodes
         {
             namespace Keys
@@ -808,6 +824,12 @@ namespace dragongod
             EmitTrace(result, nextTick_, FrameTraceKind::Step, frame, FrameControlKind::Wait, frame.id, stack_.size());
             lastOutcome_ = StackRunOutcome::Wait;
             result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            result.tickTrace.push_back(MakeTickTraceEntry(
+                nextTick_,
+                lastOutcome_,
+                stack_,
+                blackboard_.DirtySlots(),
+                mailbox_.VisibleMessages()));
             ++nextTick_;
             return true;
         }
@@ -819,6 +841,12 @@ namespace dragongod
             EmitTrace(result, nextTick_, FrameTraceKind::TerminalFailed, frame, FrameControlKind::Fail, frame.id, stack_.size());
             lastOutcome_ = StackRunOutcome::Failed;
             result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+            result.tickTrace.push_back(MakeTickTraceEntry(
+                nextTick_,
+                lastOutcome_,
+                stack_,
+                blackboard_.DirtySlots(),
+                mailbox_.VisibleMessages()));
             ++nextTick_;
             return false;
         }
@@ -867,6 +895,12 @@ namespace dragongod
         }
 
         result.dirtySlotsByTick.push_back(blackboard_.DirtySlots());
+        result.tickTrace.push_back(MakeTickTraceEntry(
+            nextTick_,
+            lastOutcome_,
+            stack_,
+            blackboard_.DirtySlots(),
+            mailbox_.VisibleMessages()));
         ++nextTick_;
         return !IsTerminal();
     }
@@ -893,6 +927,96 @@ namespace dragongod
         registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
         registry.Add(FrameId::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
         return registry;
+    }
+
+    [[nodiscard]] TraceComparisonResult CompareTickTraces(
+        const std::vector<TickTraceEntry>& expected,
+        const std::vector<TickTraceEntry>& actual)
+    {
+        TraceComparisonResult comparison;
+        comparison.expectedEntryCount = expected.size();
+        comparison.actualEntryCount = actual.size();
+
+        const std::size_t minSize = expected.size() < actual.size() ? expected.size() : actual.size();
+        for (std::size_t index = 0; index < minSize; ++index) {
+            if (!(expected[index] == actual[index])) {
+                comparison.matches = false;
+                comparison.firstMismatchIndex = index;
+                comparison.mismatchReason = "entry content mismatch";
+                comparison.expected = expected[index];
+                comparison.actual = actual[index];
+                return comparison;
+            }
+        }
+
+        if (expected.size() != actual.size()) {
+            comparison.matches = false;
+            comparison.firstMismatchIndex = minSize;
+            comparison.mismatchReason = "entry count mismatch";
+        }
+
+        return comparison;
+    }
+
+    [[nodiscard]] std::vector<std::string> SerializeTickTrace(const std::vector<TickTraceEntry>& trace)
+    {
+        std::vector<std::string> serialized;
+        serialized.reserve(trace.size());
+
+        for (const TickTraceEntry& entry : trace) {
+            std::string line;
+            line += "tick=" + std::to_string(entry.tick);
+            line += "|outcome=" + std::to_string(static_cast<int>(entry.outcome));
+            line += "|stack=";
+
+            for (const StackFrameChunkEntry& frame : entry.stack) {
+                line += std::to_string(static_cast<int>(frame.id));
+                line += ",";
+                line += std::to_string(frame.pc);
+                line += ",";
+                line += frame.entered ? "1" : "0";
+                line += ",";
+                line += std::to_string(frame.remainingWaitTicks);
+                line += ";";
+            }
+
+            line += "|dirty=";
+            for (const std::uint32_t slot : entry.dirtySlots) {
+                line += std::to_string(slot);
+                line += ";";
+            }
+
+            line += "|mailbox=";
+            for (const Message& message : entry.visibleMailbox) {
+                line += std::to_string(static_cast<int>(message.kind));
+                line += ",";
+                line += std::to_string(message.value);
+                line += ";";
+            }
+
+            serialized.push_back(line);
+        }
+
+        return serialized;
+    }
+
+    [[nodiscard]] std::string FormatTraceComparison(const TraceComparisonResult& comparison)
+    {
+        std::string text = "matches=";
+        text += comparison.matches ? "true" : "false";
+        text += "\nexpectedCount=" + std::to_string(comparison.expectedEntryCount);
+        text += "\nactualCount=" + std::to_string(comparison.actualEntryCount);
+
+        if (!comparison.matches) {
+            text += "\nfirstMismatchIndex=" + std::to_string(comparison.firstMismatchIndex);
+            text += "\nreason=" + comparison.mismatchReason;
+            const std::vector<std::string> expectedEntry = SerializeTickTrace({ comparison.expected });
+            const std::vector<std::string> actualEntry = SerializeTickTrace({ comparison.actual });
+            text += "\nexpectedEntry=" + (expectedEntry.empty() ? std::string("<none>") : expectedEntry[0]);
+            text += "\nactualEntry=" + (actualEntry.empty() ? std::string("<none>") : actualEntry[0]);
+        }
+
+        return text;
     }
 
     [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const

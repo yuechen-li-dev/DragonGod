@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -287,15 +288,6 @@ namespace dragongod
         [[nodiscard]] bool operator==(const FrameTraceEvent& other) const = default;
     };
 
-    struct [[nodiscard]] FrameRunResult
-    {
-        StackRunOutcome finalOutcome = StackRunOutcome::Continue;
-        std::vector<FrameTraceEvent> trace;
-        std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
-        std::vector<std::vector<Message>> visibleMailboxByTick;
-        Blackboard finalBlackboard;
-    };
-
     struct StackFrameChunkEntry
     {
         FrameId id = FrameId::RootPushChild;
@@ -312,6 +304,44 @@ namespace dragongod
 
         [[nodiscard]] bool operator==(const StackChunk& other) const = default;
     };
+
+    struct TickTraceEntry
+    {
+        TickIndex tick = 0;
+        StackRunOutcome outcome = StackRunOutcome::Continue;
+        std::vector<StackFrameChunkEntry> stack;
+        std::vector<std::uint32_t> dirtySlots;
+        std::vector<Message> visibleMailbox;
+
+        [[nodiscard]] bool operator==(const TickTraceEntry& other) const = default;
+    };
+
+    struct TraceComparisonResult
+    {
+        bool matches = true;
+        std::size_t firstMismatchIndex = 0;
+        std::string mismatchReason;
+        TickTraceEntry expected;
+        TickTraceEntry actual;
+        std::size_t expectedEntryCount = 0;
+        std::size_t actualEntryCount = 0;
+    };
+
+    struct [[nodiscard]] FrameRunResult
+    {
+        StackRunOutcome finalOutcome = StackRunOutcome::Continue;
+        std::vector<FrameTraceEvent> trace;
+        std::vector<TickTraceEntry> tickTrace;
+        std::vector<std::vector<std::uint32_t>> dirtySlotsByTick;
+        std::vector<std::vector<Message>> visibleMailboxByTick;
+        Blackboard finalBlackboard;
+    };
+
+    [[nodiscard]] TraceComparisonResult CompareTickTraces(
+        const std::vector<TickTraceEntry>& expected,
+        const std::vector<TickTraceEntry>& actual);
+    [[nodiscard]] std::vector<std::string> SerializeTickTrace(const std::vector<TickTraceEntry>& trace);
+    [[nodiscard]] std::string FormatTraceComparison(const TraceComparisonResult& comparison);
 
     struct RuntimeChunk
     {
