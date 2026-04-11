@@ -122,6 +122,8 @@ What to inspect from `run` first:
 
 If you need continuation/stepping or save/restore, switch from `StackFrameRuntime` to `StackFrameRuntimeSession` and call `RunForTicks(...)` in legs with `Save()`/restore between legs.
 
+Terminal-session edge case (current behavior): if a session is already terminal before a `RunForTicks(...)` call, that call executes zero ticks and returns empty per-tick vectors (`tickTrace`, `trace`, `dirtySlotsByTick`, `visibleMailboxByTick`, `actuationByTick`). Treat that as “no advancement happened,” not silent progression.
+
 ### 6) Add one Marionette FACT
 
 Create a test in `tests/DragonGod.Tests/...`:
@@ -159,6 +161,7 @@ All are in `src/DragonGod/runtime_nodes.cpp` and exercised by tests in `tests/Dr
 ## Common first-day mistakes (avoid these)
 
 - Don’t store your own phase counter in blackboard; use `ctx.PcAs<TEnum>()`.
-- Don’t bypass frame registration in `BuildFrameRegistry()`; unregistered frames fail at runtime.
+- Don’t bypass frame registration in `BuildFrameRegistry()`; pushing/replacing into an unregistered frame causes terminal runtime failure (not a no-op).
+- If terminal failure appears with no authored `Dg::Fail(...)` explanation, check whether every pushed/replaced target frame is registered.
 - Don’t mutate external world state directly from frame logic; use `ctx.Act()` request emission.
 - Don’t treat `Wait` as terminal; it is a non-terminal outcome.

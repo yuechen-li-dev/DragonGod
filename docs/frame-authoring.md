@@ -52,7 +52,8 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
 - `Dg::Continue(next)`
   - move to another phase on next tick.
 - `Dg::WaitTicks(ticks, resume)`
-  - suspend current frame execution for tick countdown, then resume phase.
+  - wait for `ticks` tick boundaries, then run this frame again at `resume`.
+  - `WaitTicks(1, resume)` runs again next tick; `WaitTicks(2, resume)` skips one full tick and runs on the following tick.
 - `Dg::Stay()`
   - continue without changing pc (implemented as continue-with-stay flag).
 - `Dg::Push(child, resumePc)`
@@ -60,7 +61,7 @@ Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase st
 - `Dg::Pop()`
   - return from a child frame.
 - `Dg::Replace(frame)`
-  - replace top frame atomically.
+  - replace top frame atomically in the current tick; replacement frame starts on the next tick (same execution timing as `Push`).
 - `Dg::Complete()`
   - terminal-complete this frame.
 - `Dg::Fail(reason)`
