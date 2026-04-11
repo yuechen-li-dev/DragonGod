@@ -42,6 +42,22 @@ namespace dragongod
                 return FrameId::RootParentChildBlackboard;
             }
 
+            if (scenario == StackScriptScenario::MailboxConsumeFifoComplete) {
+                return FrameId::RootMailboxConsumeFifo;
+            }
+
+            if (scenario == StackScriptScenario::MailboxPeekThenConsumeComplete) {
+                return FrameId::RootMailboxPeekThenConsume;
+            }
+
+            if (scenario == StackScriptScenario::MailboxParentChildConsumeComplete) {
+                return FrameId::RootMailboxParentPushChildConsume;
+            }
+
+            if (scenario == StackScriptScenario::MailboxEnqueueDuringTickComplete) {
+                return FrameId::RootMailboxEnqueueDuringTick;
+            }
+
             return FrameId::RootContinueThenComplete;
         }
 
@@ -72,6 +88,10 @@ namespace dragongod
                 constexpr BbKey<bool> Alerted{ .name = "Alerted", .slot = 1 };
                 constexpr BbKey<bool> ChildSawAlerted{ .name = "ChildSawAlerted", .slot = 2 };
                 constexpr BbKey<int> Counter{ .name = "Counter", .slot = 3 };
+                constexpr BbKey<int> FirstMessageValue{ .name = "FirstMessageValue", .slot = 4 };
+                constexpr BbKey<int> SecondMessageValue{ .name = "SecondMessageValue", .slot = 5 };
+                constexpr BbKey<int> SeenPeekValue{ .name = "SeenPeekValue", .slot = 6 };
+                constexpr BbKey<bool> MailboxTriggered{ .name = "MailboxTriggered", .slot = 7 };
             }
 
             [[nodiscard]] FrameControl RootPushChild(FrameCtx& ctx)
@@ -242,6 +262,125 @@ namespace dragongod
                     return Dg::Fail(106);
                 }
             }
+
+            [[nodiscard]] FrameControl RootMailboxConsumeFifo(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 0);
+                    }
+
+                    ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+                    return Dg::Continue(1);
+                case 1:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 1);
+                    }
+
+                    ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(400);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootMailboxPeekThenConsume(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Mb().PeekFront(message)) {
+                        return Dg::WaitTicks(1, 0);
+                    }
+
+                    ctx.Bb().Set(Keys::SeenPeekValue, message.value);
+                    return Dg::Continue(1);
+                case 1:
+                    if (!ctx.Mb().PeekFront(message)) {
+                        return Dg::Fail(401);
+                    }
+
+                    if (ctx.Bb().GetOr(Keys::SeenPeekValue, -1) != message.value) {
+                        return Dg::Fail(402);
+                    }
+
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::Fail(403);
+                    }
+
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(404);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootMailboxParentPushChildConsume(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 0);
+                    }
+
+                    ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+                    return Dg::Push(FrameId::ChildMailboxConsumeAndPop, 1);
+                case 1:
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(405);
+                }
+            }
+
+            [[nodiscard]] FrameControl RootMailboxEnqueueDuringTick(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 0);
+                    }
+
+                    ctx.Bb().Set(Keys::FirstMessageValue, message.value);
+                    ctx.Bb().Set(Keys::MailboxTriggered, true);
+                    ctx.Mb().Enqueue(Message{
+                        .kind = MessageKind::Alert,
+                        .value = 22
+                    });
+                    return Dg::Continue(1);
+                case 1:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 1);
+                    }
+
+                    if (message.kind != MessageKind::Alert || message.value != 22) {
+                        return Dg::Fail(406);
+                    }
+
+                    ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+                    return Dg::Complete();
+                default:
+                    return Dg::Fail(407);
+                }
+            }
+
+            [[nodiscard]] FrameControl ChildMailboxConsumeAndPop(FrameCtx& ctx)
+            {
+                Message message;
+                switch (ctx.Pc()) {
+                case 0:
+                    if (!ctx.Mb().ConsumeFront(message)) {
+                        return Dg::WaitTicks(1, 0);
+                    }
+
+                    ctx.Bb().Set(Keys::SecondMessageValue, message.value);
+                    return Dg::Pop();
+                default:
+                    return Dg::Fail(408);
+                }
+            }
         }
     }
 
@@ -251,6 +390,16 @@ namespace dragongod
         , pc_(pc)
         , entered_(entered)
         , blackboard_(&blackboard)
+    {
+    }
+
+    FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard, Mailbox& mailbox)
+        : frameId_(frameId)
+        , tick_(tick)
+        , pc_(pc)
+        , entered_(entered)
+        , blackboard_(&blackboard)
+        , mailbox_(&mailbox)
     {
     }
 
@@ -277,6 +426,59 @@ namespace dragongod
     [[nodiscard]] Blackboard& FrameCtx::Bb()
     {
         return *blackboard_;
+    }
+
+    [[nodiscard]] Mailbox& FrameCtx::Mb()
+    {
+        return *mailbox_;
+    }
+
+    void Mailbox::Enqueue(const Message& message)
+    {
+        staged_.push_back(message);
+    }
+
+    void Mailbox::BeginTick()
+    {
+        // M3 visibility rule:
+        // - Messages enqueued before BeginTick are visible during this tick.
+        // - Messages enqueued during frame execution are staged and become visible next tick.
+        for (const Message& message : staged_) {
+            visible_.push_back(message);
+        }
+
+        staged_.clear();
+    }
+
+    [[nodiscard]] bool Mailbox::HasMessage() const
+    {
+        return !visible_.empty();
+    }
+
+    [[nodiscard]] bool Mailbox::PeekFront(Message& message) const
+    {
+        if (visible_.empty()) {
+            return false;
+        }
+
+        message = visible_.front();
+        return true;
+    }
+
+    [[nodiscard]] bool Mailbox::ConsumeFront(Message& message)
+    {
+        if (visible_.empty()) {
+            return false;
+        }
+
+        message = visible_.front();
+        visible_.erase(visible_.begin());
+        return true;
+    }
+
+    [[nodiscard]] const std::vector<Message>& Mailbox::VisibleMessages() const
+    {
+        return visible_;
     }
 
     template <>
@@ -445,9 +647,22 @@ namespace dragongod
 
     [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const
     {
+        return RunForTicks(scenario, tickCount, RuntimeMailboxInput{});
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(
+        StackScriptScenario scenario,
+        TickIndex tickCount,
+        const RuntimeMailboxInput& mailboxInput) const
+    {
         const FrameRegistry registry = BuildRegistry();
         FrameRunResult result;
         Blackboard blackboard;
+        Mailbox mailbox;
+        for (const Message& message : mailboxInput.initialMessages) {
+            mailbox.Enqueue(message);
+        }
+
         std::vector<FrameInstance> stack;
         stack.push_back(FrameInstance{ .id = ScenarioRootFrame(scenario) });
 
@@ -459,6 +674,15 @@ namespace dragongod
             const auto recordDirtyTick = [&result, &blackboard]() {
                 result.dirtySlotsByTick.push_back(blackboard.DirtySlots());
             };
+
+            for (const ScheduledMessage& scheduled : mailboxInput.scheduledMessages) {
+                if (scheduled.tick == tick) {
+                    mailbox.Enqueue(scheduled.message);
+                }
+            }
+
+            mailbox.BeginTick();
+            result.visibleMailboxByTick.push_back(mailbox.VisibleMessages());
 
             if (stack.empty()) {
                 result.finalOutcome = StackRunOutcome::Completed;
@@ -481,7 +705,7 @@ namespace dragongod
                 continue;
             }
 
-            FrameCtx ctx(frame.id, tick, frame.pc, frame.entered, blackboard);
+            FrameCtx ctx(frame.id, tick, frame.pc, frame.entered, blackboard, mailbox);
             const FrameFn frameFunction = registry.Find(frame.id);
             if (frameFunction == nullptr) {
                 EmitTrace(result, tick, FrameTraceKind::ExitFailed, frame, FrameControlKind::Fail, frame.id, stack.size());
@@ -561,6 +785,7 @@ namespace dragongod
             break;
         }
 
+        result.finalBlackboard = blackboard;
         return result;
     }
 
@@ -580,6 +805,11 @@ namespace dragongod
         registry.Add(FrameId::ChildReadParentBool, &nodes::ChildReadParentBool);
         registry.Add(FrameId::ChildWriteParentCounter, &nodes::ChildWriteParentCounter);
         registry.Add(FrameId::RecoveryComplete, &nodes::RecoveryComplete);
+        registry.Add(FrameId::RootMailboxConsumeFifo, &nodes::RootMailboxConsumeFifo);
+        registry.Add(FrameId::RootMailboxPeekThenConsume, &nodes::RootMailboxPeekThenConsume);
+        registry.Add(FrameId::RootMailboxParentPushChildConsume, &nodes::RootMailboxParentPushChildConsume);
+        registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
+        registry.Add(FrameId::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
         return registry;
     }
 }
