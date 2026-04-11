@@ -6,7 +6,7 @@ It is **not** a full router implementation.
 
 Its purpose is to pressure-test whether the blanket assumption "router logic must inherently belong to ASIC-only architecture" is too coarse for DragonGod-oriented deterministic control loops.
 
-## M12c benchmark lane + M12b behavior
+## M12e scaling benchmark lane + M12b behavior
 
 The sample now implements a deterministic packet control loop with explicit frame-shaped steps:
 
@@ -30,18 +30,28 @@ The sample state is intentionally bounded and explicit:
 
 ## Sample-local benchmarks
 
-M12c adds a bounded benchmark lane that measures real sample behavior through Marionette `--bench`:
+M12e extends the bounded benchmark lane with deterministic scaling dimensions:
+
+- candidate-count scaling for utility path selection (`1`, `2`, `4`, `8` candidates)
+- queue/retry pressure scaling (`light` and `heavy` blocked-then-recovered cases)
+
+Each benchmark still exercises `RunRouterGoldenPath` and the real route decision + utility + queue/retry/drain logic.
 
 - `DragonRouter_ForwardKnownRouteBench`
   - stresses straightforward known-route forwarding through the real runtime entrypoint
-- `DragonRouter_UtilityPathChoiceBench`
-  - stresses multi-candidate utility-based path selection before forwarding
-- `DragonRouter_QueueRetryDrainBench`
-  - stresses queue + deferred retry/drain behavior using a blocked-then-recovered path
+- `DragonRouter_UtilityCandidates1Bench`
+- `DragonRouter_UtilityCandidates2Bench`
+- `DragonRouter_UtilityCandidates4Bench`
+- `DragonRouter_UtilityCandidates8Bench`
+  - stresses deterministic utility path-selection overhead as candidate set size grows
+- `DragonRouter_QueueRetryLightBench`
+  - stresses queue + one recovery drain pass
+- `DragonRouter_QueueRetryHeavyBench`
+  - stresses heavier queued backlog with blocked retry pass before recovery
 
 These are timing measurements only; they do not replace semantic correctness tests.
 
-## Benchmark report artifact (M12d)
+## Benchmark report artifact (M12e)
 
 - Benchmark report: [`report.md`](./report.md)
 - Raw benchmark capture: [`bench-results.txt`](./bench-results.txt)

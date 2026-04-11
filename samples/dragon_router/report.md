@@ -1,43 +1,56 @@
-# Dragon Router benchmark report (M12d)
+# Dragon Router benchmark report (M12e)
 
 ## 1) Purpose
 
-This report documents the bounded benchmark question for the Dragon Router sample:
+This report documents a bounded M12e scaling/sensitivity experiment for the Dragon Router sample.
 
-> Does this sample provide credible evidence that **some router-like control logic** can be structured as deterministic software loops, making the blanket "ASIC-only" framing too coarse for this scope?
+The question for this pass is narrower than M12d:
 
-This report does **not** claim that software replaces production router ASIC dataplanes.
+> Within this sample, which cost drivers appear to dominate: baseline forwarding, candidate-count utility selection, or queue/retry/drain behavior?
 
-## 2) Scope of the sample
+This report does **not** claim production-router throughput, protocol completeness, or hardware replacement.
 
-The measured code path is the existing bounded Dragon Router sample from M12a/M12b/M12c:
+## 2) Scope and experiment dimensions
 
-- deterministic software control-loop behavior
-- route decision + utility-based path choice + queue/retry/drain behavior
-- sample-local packet/state model and actuation outputs
+The measured code path remains sample-local and unchanged in semantics:
 
-The sample is **not**:
+- deterministic route decision
+- utility-based candidate selection
+- forward/drop/queue outcomes
+- deferred retry/drain behavior
 
-- a full router
-- a real dataplane or protocol stack
-- a line-rate forwarding claim
-- a production network stack implementation
+M12e varies only two bounded dimensions:
+
+1. **Candidate-count scaling** for utility selection:
+   - `1`, `2`, `4`, and `8` healthy route candidates
+2. **Queue-pressure scaling** for deferred behavior:
+   - `light`: one queued packet then recovery drain
+   - `heavy`: three queued packets, one blocked retry pass, then recovery drain
+
+No new router features or protocol families were introduced in this pass.
 
 ## 3) Benchmark scenarios
 
-The benchmark lane contains three sample-local scenarios:
+The benchmark lane now contains seven sample-local scenarios:
 
 1. **`DragonRouter_ForwardKnownRouteBench`**
-   - Runs `RunRouterGoldenPath` on one packet with a known healthy route and available port.
-   - Measures baseline known-route forward path cost.
+   - One packet, known healthy route, direct forward path.
+   - Baseline forward/reference cost.
 
-2. **`DragonRouter_UtilityPathChoiceBench`**
-   - Runs `RunRouterGoldenPath` on one packet with multiple healthy route candidates and different congestion scores.
-   - Measures additional work from utility-based path selection before forwarding.
+2. **`DragonRouter_UtilityCandidates1Bench`**
+3. **`DragonRouter_UtilityCandidates2Bench`**
+4. **`DragonRouter_UtilityCandidates4Bench`**
+5. **`DragonRouter_UtilityCandidates8Bench`**
+   - One packet with increasing candidate-set size for utility path choice.
+   - Isolates cost sensitivity to candidate enumeration/scoring in the real route decision path.
 
-3. **`DragonRouter_QueueRetryDrainBench`**
-   - Runs a blocked-port pass that queues the packet, then a retry/drain pass after unblocking the port.
-   - Measures the heaviest queue + deferred retry/drain behavior in this sample lane.
+6. **`DragonRouter_QueueRetryLightBench`**
+   - Blocked pass queues one packet, then unblocked pass drains.
+   - Exercises queue + recovery behavior with modest deferred work.
+
+7. **`DragonRouter_QueueRetryHeavyBench`**
+   - Blocked pass queues three packets, second blocked pass performs deferred retries, third pass unblocks and drains.
+   - Exercises a heavier deferred-work shape without adding new semantics.
 
 ## 4) Execution environment / run conditions
 
@@ -51,58 +64,63 @@ Observed run conditions for this report:
   - Marionette benchmark mode via `--bench`
 - compiler observed:
   - `g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0`
-- benchmark iteration counts (from benchmark definitions/output):
-  - ForwardKnownRoute: 10000
-  - UtilityPathChoice: 10000
-  - QueueRetryDrain: 5000
 
-Machine-specific details such as CPU model, frequency policy, and OS scheduling state were **not** captured by the benchmark output. This report does not infer them.
+Machine-level controls (CPU pinning/isolation/frequency policy) were not captured by harness output.
 
 ## 5) Results
 
 Raw benchmark output is preserved in `samples/dragon_router/bench-results.txt`.
 
-Two runs were captured in this environment.
-
 ### Run 1
 
 | Benchmark | Iterations | Elapsed (ns) | Avg (ns) |
 |---|---:|---:|---:|
-| DragonRouter_ForwardKnownRouteBench | 10000 | 81,710,058 | 8,171 |
-| DragonRouter_UtilityPathChoiceBench | 10000 | 80,945,212 | 8,094 |
-| DragonRouter_QueueRetryDrainBench | 5000 | 81,641,071 | 16,328 |
+| DragonRouter_ForwardKnownRouteBench | 10000 | 87,420,864 | 8,742 |
+| DragonRouter_UtilityCandidates1Bench | 10000 | 81,611,942 | 8,161 |
+| DragonRouter_UtilityCandidates2Bench | 10000 | 105,838,184 | 10,583 |
+| DragonRouter_UtilityCandidates4Bench | 10000 | 114,997,255 | 11,499 |
+| DragonRouter_UtilityCandidates8Bench | 10000 | 145,067,990 | 14,506 |
+| DragonRouter_QueueRetryLightBench | 5000 | 78,237,653 | 15,647 |
+| DragonRouter_QueueRetryHeavyBench | 3000 | 218,053,648 | 72,684 |
 
 ### Run 2
 
 | Benchmark | Iterations | Elapsed (ns) | Avg (ns) |
 |---|---:|---:|---:|
-| DragonRouter_ForwardKnownRouteBench | 10000 | 70,292,924 | 7,029 |
-| DragonRouter_UtilityPathChoiceBench | 10000 | 81,488,315 | 8,148 |
-| DragonRouter_QueueRetryDrainBench | 5000 | 70,078,942 | 14,015 |
+| DragonRouter_ForwardKnownRouteBench | 10000 | 83,474,142 | 8,347 |
+| DragonRouter_UtilityCandidates1Bench | 10000 | 110,830,437 | 11,083 |
+| DragonRouter_UtilityCandidates2Bench | 10000 | 100,104,940 | 10,010 |
+| DragonRouter_UtilityCandidates4Bench | 10000 | 120,045,734 | 12,004 |
+| DragonRouter_UtilityCandidates8Bench | 10000 | 151,038,779 | 15,103 |
+| DragonRouter_QueueRetryLightBench | 5000 | 91,955,196 | 18,391 |
+| DragonRouter_QueueRetryHeavyBench | 3000 | 198,567,513 | 66,189 |
 
-## 6) Interpretation
+## 6) Bounded interpretation
 
-Bounded interpretation from these runs:
+Bounded interpretation from these two runs:
 
-- `QueueRetryDrain` is consistently the heaviest scenario in average nanoseconds, which is intuitive for a two-stage queue then drain path.
-- `ForwardKnownRoute` and `UtilityPathChoice` are both lighter than queue/retry/drain and are in the same order of magnitude.
-- `UtilityPathChoice` is above `ForwardKnownRoute` in run 2 and very close in run 1, indicating that path-choice overhead exists but is small relative to run-to-run noise in this environment.
+- **Queue-pressure dominates** this lane: `QueueRetryHeavy` is consistently the most expensive scenario by a large margin, and `QueueRetryLight` is materially above baseline forwarding.
+- **Candidate-count sensitivity appears real**: moving from `2` to `4` to `8` candidates trends upward in both runs, consistent with more utility-candidate work.
+- **Low-end candidate variance is noisy** in this environment (`1` vs `2` swapped ordering across runs), so only broad trends should be claimed.
 
-Within this limited sample, the results are compatible with the claim that structured software control behavior for bounded router-like logic is plausible.
+Within this bounded sample, the strongest supported reading is that deferred queue/retry/drain behavior is the primary cost driver, while utility candidate growth contributes a secondary, measurable cost trend.
 
-They do **not** establish that software can replace production ASIC dataplanes or line-rate systems.
+## 7) What this does and does not conclude
 
-## 7) Limitations
+This experiment supports only sample-local conclusions:
 
-This benchmark report has explicit limitations:
+- it helps explain cost shape inside the Dragon Router sample
+- it does not establish production line-rate feasibility
+- it does not compare against ASIC dataplanes
+- it does not validate real-world protocol-stack performance
+
+## 8) Limitations
+
+This report still has explicit limits:
 
 - bounded sample only, not a full router
 - no real packet parsing pipeline
-- no NIC/kernel-bypass/DPDK/XDP-style dataplane integration
+- no NIC/kernel-bypass/DPDK/XDP dataplane integration
 - no production routing protocols
-- no line-rate throughput comparison against hardware dataplanes
-- only two captured runs in one environment
-- no CPU pinning/isolation controls documented
-- no captured machine metadata beyond visible compiler and commands
-
-Because of these limits, this report should be treated as a small experiment artifact, not a production performance claim.
+- only two runs in one environment
+- no captured machine metadata beyond visible commands/compiler
