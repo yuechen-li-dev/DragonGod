@@ -8,3 +8,4 @@ Current samples:
 
 - `dragon_router/`: scaffold for a bounded router/control-loop experiment.
 - `dragon_hft/`: scaffold for a bounded market-reaction/order-decision/stale-recovery experiment.
+- `ariadne_beowulf/`: scaffold for a bounded Ariadne-on-DragonGod narrative-kernel experiment.
