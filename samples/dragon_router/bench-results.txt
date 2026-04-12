@@ -1,16 +1,18 @@
-# Dragon Router benchmark results (M12f)
+# Dragon Router benchmark results (M12g)
 
 Command:
 ./out/dragon_router_tests --bench DragonRouter_
 
-[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=69436082 avg_ns=6943
-[BENCH] DragonRouter_QueueRetryBackoffBench iterations=3000 elapsed_ns=120402542 avg_ns=40134
-[BENCH] DragonRouter_QueueRetryBaselineBench iterations=3000 elapsed_ns=175845271 avg_ns=58615
-[BENCH] DragonRouter_QueueRetryConditionAwareBench iterations=3000 elapsed_ns=160553355 avg_ns=53517
-[BENCH] DragonRouter_QueueRetryLightBench iterations=5000 elapsed_ns=71504111 avg_ns=14300
-[BENCH] DragonRouter_UtilityCandidates1Bench iterations=10000 elapsed_ns=68676622 avg_ns=6867
-[BENCH] DragonRouter_UtilityCandidates2Bench iterations=10000 elapsed_ns=81687927 avg_ns=8168
-[BENCH] DragonRouter_UtilityCandidates4Bench iterations=10000 elapsed_ns=96289787 avg_ns=9628
-[BENCH] DragonRouter_UtilityCandidates8Bench iterations=10000 elapsed_ns=119709797 avg_ns=11970
+[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=71411939 avg_ns=7141
+[BENCH] DragonRouter_QueueRetryAlternateDrainBench iterations=3000 elapsed_ns=210550388 avg_ns=70183
+[BENCH] DragonRouter_QueueRetryBackoffAlternateDrainBench iterations=3000 elapsed_ns=150102105 avg_ns=50034
+[BENCH] DragonRouter_QueueRetryBackoffBench iterations=3000 elapsed_ns=145907669 avg_ns=48635
+[BENCH] DragonRouter_QueueRetryBaselineBench iterations=3000 elapsed_ns=215151172 avg_ns=71717
+[BENCH] DragonRouter_QueueRetryConditionAwareBench iterations=3000 elapsed_ns=162194281 avg_ns=54064
+[BENCH] DragonRouter_QueueRetryLightBench iterations=5000 elapsed_ns=75480307 avg_ns=15096
+[BENCH] DragonRouter_UtilityCandidates1Bench iterations=10000 elapsed_ns=74825105 avg_ns=7482
+[BENCH] DragonRouter_UtilityCandidates2Bench iterations=10000 elapsed_ns=88422710 avg_ns=8842
+[BENCH] DragonRouter_UtilityCandidates4Bench iterations=10000 elapsed_ns=106586270 avg_ns=10658
+[BENCH] DragonRouter_UtilityCandidates8Bench iterations=10000 elapsed_ns=124923157 avg_ns=12492
 
-Benchmark Summary: 9 benchmark(s)
+Benchmark Summary: 11 benchmark(s)

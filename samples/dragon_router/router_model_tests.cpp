@@ -64,3 +64,27 @@ FACT(M12b_SelectBestEgressPort_ReturnsMinusOneWhenAllCandidatesBlocked)
     const int selected = SelectBestEgressPort(state, 21);
     ASSERT_EQUAL(-1, selected, "all blocked candidates should force queue path");
 }
+
+FACT(M12g_SelectPreferredQueuedPort_PrefersLeastCongestedCandidateWhenBlocked)
+{
+    RouterState state{};
+    state.routes.push_back(RouteEntry{ .destinationId = 42, .egressPort = 7, .healthy = true });
+    state.routes.push_back(RouteEntry{ .destinationId = 42, .egressPort = 8, .healthy = true });
+    state.ports.push_back(PortState{ .portId = 7, .linkUp = true, .queueFull = true, .congestionScore = 10 });
+    state.ports.push_back(PortState{ .portId = 8, .linkUp = true, .queueFull = true, .congestionScore = 60 });
+
+    const int preferred = SelectPreferredQueuedPort(state, 42);
+    ASSERT_EQUAL(7, preferred, "queued preference should keep the lower-pressure original candidate deterministic");
+}
+
+FACT(M12g_SelectPreferredQueuedPort_AvoidsLinkDownWhenAlternativeExists)
+{
+    RouterState state{};
+    state.routes.push_back(RouteEntry{ .destinationId = 43, .egressPort = 9, .healthy = true });
+    state.routes.push_back(RouteEntry{ .destinationId = 43, .egressPort = 10, .healthy = true });
+    state.ports.push_back(PortState{ .portId = 9, .linkUp = false, .queueFull = false, .congestionScore = 0 });
+    state.ports.push_back(PortState{ .portId = 10, .linkUp = true, .queueFull = true, .congestionScore = 30 });
+
+    const int preferred = SelectPreferredQueuedPort(state, 43);
+    ASSERT_EQUAL(10, preferred, "queued preference should penalize link-down candidates");
+}

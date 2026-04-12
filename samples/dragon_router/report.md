@@ -1,12 +1,12 @@
-# Dragon Router benchmark report (M12f)
+# Dragon Router benchmark report (M12g)
 
 ## 1) Purpose
 
-This report documents a bounded M12f experiment focused on the Dragon Router queue/retry/drain path.
+This report documents a bounded M12g experiment focused on the Dragon Router heavy queue/retry/drain lane.
 
 Question for this pass:
 
-> Can small deterministic retry heuristics reduce wasted deferred work on the heavy recovery path while preserving recovery behavior?
+> Once queued packets become retry-eligible, is it better to wait for the original preferred path, or drain through a currently viable alternate path?
 
 This report does **not** claim production-router throughput, protocol completeness, or hardware replacement.
 
@@ -18,25 +18,35 @@ The runtime path remains sample-local and deterministic:
 - forward/drop/queue outcomes
 - deferred retry/drain behavior
 
-M12f compares three retry heuristics on the heavy recovery shape:
+M12g keeps M12f retry heuristics and adds one bounded drain policy dimension:
 
-1. **BaselineFixedDelay**
-   - Existing fixed retry cadence (`retryDelayTicks`).
-2. **BackoffDelay**
-   - Retry delay grows with retry count and is capped (`maxBackoffDelayTicks`).
-3. **ConditionAware**
-   - Retry pass is skipped when no healthy usable recovery signal exists (link-up, queue-not-full, and congestion at/below configured bound).
+1. **Retry heuristics**
+   - `BaselineFixedDelay`
+   - `BackoffDelay`
+   - `ConditionAware`
+2. **Drain policy**
+   - `PreferOriginalPath`: queued packets wait for queue-time preferred egress.
+   - `AllowAlternatePath`: queued packets may drain through another currently viable candidate when preferred remains blocked.
+
+The heavy M12g alternate-path scenario shape is fixed and deterministic:
+
+- two candidate ports are blocked at queue time
+- first deferred pass remains blocked
+- alternate path recovers before preferred path
+- final pass restores preferred path
 
 ## 3) Metrics used for interpretation
 
-The benchmark lane still reports elapsed/average time, and the runtime now also tracks bounded deferred-work counters in state:
+The benchmark lane reports elapsed/average time. Runtime state also tracks bounded deferred-work and behavior counters:
 
-- `retryAttempts`: number of failed retry attempts that actually executed
-- `retrySkippedCount`: number of deferred retry passes skipped by condition-aware gating
-- `drainedCount`: number of queued packets eventually forwarded
+- `retryAttempts`: failed retry attempts that executed
+- `retrySkippedCount`: deferred retries skipped in condition-aware mode
+- `drainedCount`: total queued packets forwarded later
+- `drainedPreferredPathCount`: queued drains forwarded on queue-time preferred path
+- `drainedAlternatePathCount`: queued drains forwarded on non-preferred alternate path
 - `queuedPackets.size()` at end: deferred backlog still pending
 
-These counters are validated in sample-local runtime tests and are intended to make tradeoffs visible beyond wall-clock timing.
+These counters are validated in sample-local tests and make behavioral tradeoffs visible beyond wall-clock timing.
 
 ## 4) Benchmark scenarios
 
@@ -51,8 +61,13 @@ Benchmarks in this pass:
 - `DragonRouter_QueueRetryBaselineBench`
 - `DragonRouter_QueueRetryBackoffBench`
 - `DragonRouter_QueueRetryConditionAwareBench`
+- `DragonRouter_QueueRetryAlternateDrainBench`
+- `DragonRouter_QueueRetryBackoffAlternateDrainBench`
 
-The three heavy queue/retry benchmarks run the same blocked->blocked->recovered shape, changing only retry heuristic.
+Heavy queue/retry comparisons are intentionally bounded:
+
+- baseline/backoff: same heavy alternate-recovery timeline, but queue waits for preferred path
+- alternate-drain: same timeline, but queue may drain on alternate path when it recovers first
 
 ## 5) Execution environment / run conditions
 
@@ -73,37 +88,41 @@ Raw benchmark output is preserved in `samples/dragon_router/bench-results.txt`.
 
 | Benchmark | Iterations | Elapsed (ns) | Avg (ns) |
 |---|---:|---:|---:|
-| DragonRouter_ForwardKnownRouteBench | 10,000 | 69,436,082 | 6,943 |
-| DragonRouter_UtilityCandidates1Bench | 10,000 | 68,676,622 | 6,867 |
-| DragonRouter_UtilityCandidates2Bench | 10,000 | 81,687,927 | 8,168 |
-| DragonRouter_UtilityCandidates4Bench | 10,000 | 96,289,787 | 9,628 |
-| DragonRouter_UtilityCandidates8Bench | 10,000 | 119,709,797 | 11,970 |
-| DragonRouter_QueueRetryLightBench | 5,000 | 71,504,111 | 14,300 |
-| DragonRouter_QueueRetryBaselineBench | 3,000 | 175,845,271 | 58,615 |
-| DragonRouter_QueueRetryBackoffBench | 3,000 | 120,402,542 | 40,134 |
-| DragonRouter_QueueRetryConditionAwareBench | 3,000 | 160,553,355 | 53,517 |
+| DragonRouter_ForwardKnownRouteBench | 10,000 | 71,411,939 | 7,141 |
+| DragonRouter_UtilityCandidates1Bench | 10,000 | 74,825,105 | 7,482 |
+| DragonRouter_UtilityCandidates2Bench | 10,000 | 88,422,710 | 8,842 |
+| DragonRouter_UtilityCandidates4Bench | 10,000 | 106,586,270 | 10,658 |
+| DragonRouter_UtilityCandidates8Bench | 10,000 | 124,923,157 | 12,492 |
+| DragonRouter_QueueRetryLightBench | 5,000 | 75,480,307 | 15,096 |
+| DragonRouter_QueueRetryBaselineBench | 3,000 | 215,151,172 | 71,717 |
+| DragonRouter_QueueRetryBackoffBench | 3,000 | 145,907,669 | 48,635 |
+| DragonRouter_QueueRetryConditionAwareBench | 3,000 | 162,194,281 | 54,064 |
+| DragonRouter_QueueRetryAlternateDrainBench | 3,000 | 210,550,388 | 70,183 |
+| DragonRouter_QueueRetryBackoffAlternateDrainBench | 3,000 | 150,102,105 | 50,034 |
 
 ## 7) Bounded interpretation
 
 Bounded reading from this run:
 
 - Heavy queue/retry remains the dominant cost lane relative to direct forwarding.
-- Backoff reduced heavy-lane timing most in this run, consistent with fewer immediate retry attempts under persistent blockage.
-- Condition-aware gating also improved heavy-lane timing vs baseline, but less than backoff in this particular run.
-- Utility candidate scaling trend still rises as candidate count increases.
+- In this environment, alternate-path drain with baseline retry cadence did **not** materially beat preferred-path waiting (`70,183 ns` vs `71,717 ns` avg).
+- Backoff remained the strongest timing reducer in this bounded setup.
+- Combining backoff + alternate drain stayed near backoff-only timing, showing no clear additive win here.
 
-Tradeoff note:
+Behavior tradeoff exposed by counters/tests:
 
-- A lower heavy-path cost here comes from doing less immediate retry work, not from any protocol expansion.
-- This pass does not claim that these heuristics are universally better under all traffic/recovery timelines.
+- `PreferOriginalPath` keeps queue semantics stable but may defer forwarding even when an alternate becomes viable first.
+- `AllowAlternatePath` can drain sooner through an alternate candidate and increments `drainedAlternatePathCount`, which explicitly marks behavioral shift.
 
 ## 8) What this does and does not conclude
 
 This experiment supports sample-local conclusions only:
 
-- deterministic retry heuristics can materially change heavy deferred-work cost in this sample
-- measured gains are bounded to this setup and single observed environment
-- this does not establish production dataplane throughput or system-level router behavior
+- alternate-path drain is implementable as a small deterministic policy toggle
+- alternate drain can change recovery behavior (which path drains queued packets)
+- timing benefit is scenario- and heuristic-dependent in this bounded setup
+
+This does **not** establish production dataplane throughput, global multipath policy quality, or universal routing behavior.
 
 ## 9) Limitations
 
