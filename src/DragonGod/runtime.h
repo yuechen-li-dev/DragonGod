@@ -47,9 +47,9 @@ namespace dragongod
         RootUtilityTieBreakKeepCurrent,
         RootUtilityTieBreakFirstListed,
         RootUtilityTieBreakLastListed,
-        UtilityActionCombat,
-        UtilityActionReload,
-        UtilityActionPatrol,
+        UtilityActionPrimary,
+        UtilityActionSecondary,
+        UtilityActionFallback,
         RootActImmediateDeferred,
         RootActOrderedDeferred,
         RootActParentPushChild,
@@ -115,8 +115,8 @@ namespace dragongod
         PlayBark,
         RaiseAlarm,
         OpenDoor,
-        UtilityCombat,
-        UtilityReload
+        UtilityPrimary,
+        UtilitySecondary
     };
 
     struct ActRequest
@@ -571,11 +571,13 @@ namespace dragongod
             const RuntimeMailboxInput& mailboxInput) const;
     };
 
+    // Built-in scorer fixtures used by canonical proof/demo scenarios.
+    // These are neutral examples for deterministic utility coverage, not domain constraints.
     namespace When
     {
         [[nodiscard]] float Always(const FrameCtx& ctx);
-        [[nodiscard]] float Alerted(const FrameCtx& ctx);
-        [[nodiscard]] float LowAmmo(const FrameCtx& ctx);
+        [[nodiscard]] float HighSignal(const FrameCtx& ctx);
+        [[nodiscard]] float ResourcePressure(const FrameCtx& ctx);
     }
 
     template <typename T>

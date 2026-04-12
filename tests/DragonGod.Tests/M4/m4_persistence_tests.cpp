@@ -8,7 +8,7 @@ namespace
 {
     namespace Keys
     {
-        constexpr dragongod::BbKey<bool> ChildSawAlerted{ .name = "ChildSawAlerted", .slot = 2 };
+        constexpr dragongod::BbKey<bool> ChildSawHighSignal{ .name = "ChildSawHighSignal", .slot = 2 };
         constexpr dragongod::BbKey<int> Counter{ .name = "Counter", .slot = 3 };
         constexpr dragongod::BbKey<int> FirstMessageValue{ .name = "FirstMessageValue", .slot = 4 };
         constexpr dragongod::BbKey<int> SecondMessageValue{ .name = "SecondMessageValue", .slot = 5 };
@@ -242,6 +242,6 @@ FACT(M4_RepeatedSnapshotRestoreRuns_AreDeterministic)
 
     ASSERT_SEQUENCE_EQUAL(SerializeTrace(traceA), SerializeTrace(traceB), "repeated restore runs should have no trace drift");
     ASSERT_TRUE(runASecondLeg.finalOutcome == runBSecondLeg.finalOutcome, "repeated restore runs should match final outcome");
-    ASSERT_TRUE(runASecondLeg.finalBlackboard.GetOr(Keys::ChildSawAlerted, false), "restored run should continue through canonical child frame logic");
+    ASSERT_TRUE(runASecondLeg.finalBlackboard.GetOr(Keys::ChildSawHighSignal, false), "restored run should continue through canonical child frame logic");
     ASSERT_EQUAL(5, runASecondLeg.finalBlackboard.GetOr(Keys::Counter, 0), "restored run should preserve canonical parent-child blackboard semantics");
 }

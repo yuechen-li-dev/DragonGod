@@ -697,22 +697,23 @@ namespace dragongod
 
     namespace When
     {
+        // Built-in proof/demo scorers read canonical fixture keys from the blackboard.
         [[nodiscard]] float Always(const FrameCtx&)
         {
             return 0.25f;
         }
 
-        [[nodiscard]] float Alerted(const FrameCtx& ctx)
+        [[nodiscard]] float HighSignal(const FrameCtx& ctx)
         {
-            constexpr BbKey<int> AlertScoreKey{ .name = "AlertScore", .slot = 8 };
-            const int raw = ctx.Bb().GetOr(AlertScoreKey, 0);
+            constexpr BbKey<int> HighSignalScoreKey{ .name = "HighSignalScore", .slot = 8 };
+            const int raw = ctx.Bb().GetOr(HighSignalScoreKey, 0);
             return ClampScore01(static_cast<float>(raw) / 100.0f);
         }
 
-        [[nodiscard]] float LowAmmo(const FrameCtx& ctx)
+        [[nodiscard]] float ResourcePressure(const FrameCtx& ctx)
         {
-            constexpr BbKey<int> LowAmmoScoreKey{ .name = "LowAmmoScore", .slot = 9 };
-            const int raw = ctx.Bb().GetOr(LowAmmoScoreKey, 0);
+            constexpr BbKey<int> ResourcePressureScoreKey{ .name = "ResourcePressureScore", .slot = 9 };
+            const int raw = ctx.Bb().GetOr(ResourcePressureScoreKey, 0);
             return ClampScore01(static_cast<float>(raw) / 100.0f);
         }
     }
