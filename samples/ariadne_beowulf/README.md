@@ -1,26 +1,30 @@
-# Ariadne Beowulf sample scaffold (Pre-AriadneDG)
+# Ariadne Beowulf sample (M15a golden path)
 
-This directory is a bounded Ariadne-on-DragonGod narrative kernel experiment scaffold using the dragon episode of **Beowulf** as the motivating sample domain.
+This directory is a bounded Ariadne-on-DragonGod narrative kernel experiment using the dragon episode of **Beowulf**.
 
-This pass is scaffold-only.
+This pass implements a compact, deterministic golden path:
 
-It is **not**:
+- barrow approach scene output,
+- one bounded pre-battle choice,
+- deterministic transition into first clash.
 
-- a full narrative engine,
-- a full Beowulf implementation,
-- a claim that long-form story authoring should permanently live in raw C++.
+It is still **not** a full narrative engine or full episode adaptation.
 
-The purpose is to pressure-test DragonGod as a compact narrative execution kernel: deterministic progression, explicit choices, bounded memory/state, and rollback-friendly flow.
+## Implemented narrative beats
 
-The expected growth path is a minimal golden path first, then narrow expansions only if the architecture proves clean under pressure.
+1. **Barrow approach**: short tragic opening lines establish kingship, doom, and the barrow.
+2. **Pre-battle choice**: one bounded choice set (`Speak proudly`, `Speak grimly`, `Speak as a king`) mapped from mailbox input.
+3. **First clash entry**: choice updates tone/state and deterministically alters first-clash poetic lines.
 
-## Files in this scaffold
+## Files
 
-- `beowulf_model.h` / `beowulf_model.cpp`: placeholder sample-local state model and narrow validation helpers.
-- `beowulf_nodes.cpp`: scaffold runtime-link smoke path that runs a tiny DragonGod scenario from sample-local code.
-- `beowulf_tests.cpp`: sample-local smoke tests proving this sample compiles and links against DragonGod.
+- `beowulf_model.h` / `beowulf_model.cpp`: bounded scene/tone/state model plus deterministic text and choice mapping helpers.
+- `beowulf_nodes.h` / `beowulf_nodes.cpp`: explicit frame-style progression (`barrow -> choice -> first clash`) using DragonGod mailbox + blackboard primitives.
+- `beowulf_model_tests.cpp`: model/helper determinism and bounded-shape tests.
+- `beowulf_nodes_tests.cpp`: scene progression and choice-branch node tests.
+- `beowulf_runtime_tests.cpp`: replay determinism and end-to-end golden-path tests.
 
-## Build and run (sample-local smoke path)
+## Build and run sample-local tests
 
 From repository root:
 
@@ -39,10 +43,10 @@ g++ -std=c++23 -Wall -Wextra -pedantic \
   src/DragonGod/tick_loop.cpp \
   samples/ariadne_beowulf/beowulf_model.cpp \
   samples/ariadne_beowulf/beowulf_nodes.cpp \
-  samples/ariadne_beowulf/beowulf_tests.cpp \
+  samples/ariadne_beowulf/beowulf_model_tests.cpp \
+  samples/ariadne_beowulf/beowulf_nodes_tests.cpp \
+  samples/ariadne_beowulf/beowulf_runtime_tests.cpp \
   -o out/ariadne_beowulf_tests
 
 ./out/ariadne_beowulf_tests
 ```
-
-This proves scaffold wiring only; narrative semantics are intentionally deferred.
