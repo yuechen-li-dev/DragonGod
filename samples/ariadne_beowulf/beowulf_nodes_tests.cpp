@@ -15,7 +15,7 @@ namespace
     }
 }
 
-FACT(M15a_Nodes_BarrowThenChoice_NoInputWaitsDeterministically)
+FACT(M15b_Nodes_BarrowThenChoice_NoInputWaitsDeterministically)
 {
     const BeowulfRunResult run = RunBeowulfGoldenPath(BeowulfRunRequest{});
 
@@ -25,7 +25,7 @@ FACT(M15a_Nodes_BarrowThenChoice_NoInputWaitsDeterministically)
     ASSERT_EQUAL(3, static_cast<int>(run.output.choices.size()), "run should present deterministic bounded choice list");
 }
 
-FACT(M15a_Nodes_ChoiceProudly_TransitionsToFirstClash)
+FACT(M15b_Nodes_ChoiceProudly_TransitionsThroughCollapseToHandoff)
 {
     BeowulfRunRequest request{};
     request.mailboxInput.push_back(ChoiceMessage(BeowulfChoiceId::SpeakProudly));
@@ -35,11 +35,14 @@ FACT(M15a_Nodes_ChoiceProudly_TransitionsToFirstClash)
     ASSERT_FALSE(run.failed, "valid choice should not fail");
     ASSERT_TRUE(run.finalState.preBattleChoiceConsumed, "valid choice should be consumed");
     ASSERT_TRUE(run.finalState.firstClashBegun, "valid choice should begin first clash");
-    ASSERT_EQUAL(static_cast<int>(BeowulfTone::Proud), static_cast<int>(run.finalState.tone), "proud choice should set proud tone");
-    ASSERT_EQUAL(std::string("He boasts against the barrow-mouth."), run.output.sceneLines[0], "proud choice should produce proud clash text");
+    ASSERT_TRUE(run.finalState.retainersFled, "retainers should collapse in this milestone path");
+    ASSERT_TRUE(run.finalState.wiglafRemains, "Wiglaf should remain as bounded loyalty anchor");
+    ASSERT_EQUAL(static_cast<int>(BeowulfLoyaltyPressure::BoastShattered), static_cast<int>(run.finalState.loyaltyPressure), "proud tone should carry bounded pressure flavor");
+    ASSERT_EQUAL(static_cast<int>(BeowulfScene::Completed), static_cast<int>(run.output.scene), "run should complete deterministic bounded sequence");
+    ASSERT_EQUAL(std::string("The fight narrows to king and heir of courage."), run.output.sceneLines[0], "final emitted beat should hand off to tragic late phase");
 }
 
-FACT(M15a_Nodes_ChoiceGrimly_TransitionsToFirstClash)
+FACT(M15b_Nodes_ChoiceGrimly_ChangesCollapseFlavor)
 {
     BeowulfRunRequest request{};
     request.mailboxInput.push_back(ChoiceMessage(BeowulfChoiceId::SpeakGrimly));
@@ -48,10 +51,12 @@ FACT(M15a_Nodes_ChoiceGrimly_TransitionsToFirstClash)
 
     ASSERT_FALSE(run.failed, "valid choice should not fail");
     ASSERT_EQUAL(static_cast<int>(BeowulfTone::Grim), static_cast<int>(run.finalState.tone), "grim choice should set grim tone");
-    ASSERT_EQUAL(std::string("He names doom and does not turn."), run.output.sceneLines[0], "grim choice should produce grim clash text");
+    ASSERT_EQUAL(static_cast<int>(BeowulfLoyaltyPressure::DoomWeight), static_cast<int>(run.finalState.loyaltyPressure), "grim tone should map to doom-weight pressure");
+    ASSERT_TRUE(run.finalState.collapseSpoken, "collapse beat flag should be marked");
+    ASSERT_TRUE(run.finalState.wiglafSpoken, "wiglaf beat flag should be marked");
 }
 
-FACT(M15a_Nodes_InvalidChoice_FailsWithBoundedReason)
+FACT(M15b_Nodes_InvalidChoice_FailsWithBoundedReason)
 {
     BeowulfRunRequest request{};
     request.mailboxInput.push_back(dragongod::Message{

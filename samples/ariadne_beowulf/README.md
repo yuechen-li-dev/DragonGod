@@ -1,12 +1,15 @@
-# Ariadne Beowulf sample (M15a golden path)
+# Ariadne Beowulf sample (M15b loyalty / collapse path)
 
 This directory is a bounded Ariadne-on-DragonGod narrative kernel experiment using the dragon episode of **Beowulf**.
 
-This pass implements a compact, deterministic golden path:
+This pass extends M15a with a compact dramatic-state loop:
 
 - barrow approach scene output,
-- one bounded pre-battle choice,
-- deterministic transition into first clash.
+- one bounded pre-battle tone choice,
+- deterministic first clash,
+- deterministic retainer collapse,
+- deterministic Wiglaf-remains loyalty beat,
+- clean handoff into the tragic late phase.
 
 It is still **not** a full narrative engine or full episode adaptation.
 
@@ -14,15 +17,18 @@ It is still **not** a full narrative engine or full episode adaptation.
 
 1. **Barrow approach**: short tragic opening lines establish kingship, doom, and the barrow.
 2. **Pre-battle choice**: one bounded choice set (`Speak proudly`, `Speak grimly`, `Speak as a king`) mapped from mailbox input.
-3. **First clash entry**: choice updates tone/state and deterministically alters first-clash poetic lines.
+3. **First clash entry**: choice updates tone/state and determines first-clash voice.
+4. **Retainer collapse**: thanes fail/flee under dragon-fire pressure; collapse is explicit in output and state.
+5. **Wiglaf remains**: one loyalty anchor remains explicit in output and state.
+6. **Tragic handoff**: story transitions into the narrow late-phase beat without implementing the full ending yet.
 
 ## Files
 
-- `beowulf_model.h` / `beowulf_model.cpp`: bounded scene/tone/state model plus deterministic text and choice mapping helpers.
-- `beowulf_nodes.h` / `beowulf_nodes.cpp`: explicit frame-style progression (`barrow -> choice -> first clash`) using DragonGod mailbox + blackboard primitives.
-- `beowulf_model_tests.cpp`: model/helper determinism and bounded-shape tests.
-- `beowulf_nodes_tests.cpp`: scene progression and choice-branch node tests.
-- `beowulf_runtime_tests.cpp`: replay determinism and end-to-end golden-path tests.
+- `beowulf_model.h` / `beowulf_model.cpp`: bounded scene/tone/loyalty state model plus deterministic text and choice mapping helpers.
+- `beowulf_nodes.h` / `beowulf_nodes.cpp`: explicit frame-style progression (`barrow -> choice -> clash -> collapse -> Wiglaf -> handoff`) using DragonGod mailbox + blackboard primitives.
+- `beowulf_model_tests.cpp`: model/helper determinism, loyalty mapping, and invariants.
+- `beowulf_nodes_tests.cpp`: scene progression and failure-path node tests for collapse and Wiglaf beats.
+- `beowulf_runtime_tests.cpp`: replay determinism and end-to-end dramatic-state tests.
 
 ## Build and run sample-local tests
 
@@ -32,7 +38,7 @@ From repository root:
 mkdir -p out
 
 g++ -std=c++23 -Wall -Wextra -pedantic \
-  -DMARIONETTE_TEST_REPO_ROOT="/workspace/DragonGod" \
+  -DMARIONETTE_TEST_REPO_ROOT='"/workspace/DragonGod"' \
   tests/Marionette/test_harness.cpp \
   tests/Marionette/test_doom.cpp \
   tests/Marionette/test_main.cpp \
