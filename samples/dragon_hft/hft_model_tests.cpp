@@ -74,3 +74,17 @@ FACT(M14b_Model_PriceForOrder_UsesExpectedTopOfBookSide)
     ASSERT_EQUAL(101, PriceForOrder(event, OrderSide::Sell), "sell submit should use best bid");
     ASSERT_EQUAL(0, PriceForOrder(event, OrderSide::None), "hold action should not resolve a price");
 }
+
+FACT(M14c_Model_ReentryHysteresisSatisfied_RequiresExtraMarginWhenEnabled)
+{
+    HftState state = ModelBaseState();
+    state.enableReentryHysteresis = true;
+    state.reentryHysteresisMargin = 2;
+
+    ASSERT_FALSE(ReentryHysteresisSatisfied(6, state), "signal below threshold plus margin should not pass reentry hysteresis");
+    ASSERT_TRUE(ReentryHysteresisSatisfied(7, state), "signal at threshold plus margin should pass reentry hysteresis");
+    ASSERT_TRUE(ReentryHysteresisSatisfied(-7, state), "negative boundary should be symmetric");
+
+    state.enableReentryHysteresis = false;
+    ASSERT_TRUE(ReentryHysteresisSatisfied(6, state), "disabled hysteresis should allow ordinary actionable reentry checks");
+}

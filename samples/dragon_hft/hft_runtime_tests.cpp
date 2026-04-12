@@ -68,3 +68,68 @@ FACT(M14b_Runtime_Replay_IsDeterministic)
 
     ASSERT_TRUE(runA == runB, "same mailbox inputs should replay to identical bounded outputs");
 }
+
+FACT(M14c_Runtime_ReentryBaseline_ReentersImmediatelyAfterStaleCancel)
+{
+    const std::vector<MarketEvent> mailbox{
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 6 }
+    };
+
+    const HftRunOutput run = RunHftGoldenPath(RuntimeBaseState(), mailbox);
+
+    ASSERT_EQUAL(3, static_cast<int>(run.actuation.size()), "baseline should submit, cancel stale, and re-submit on next actionable event");
+    ASSERT_EQUAL(1, run.finalState.reentrySubmitCount, "reentry submit should be counted");
+    ASSERT_EQUAL(1, run.finalState.lastReentryLatencyTicks, "immediate reentry should take one event after stale cancel");
+    ASSERT_EQUAL(0, run.finalState.reentryBlockedByHysteresisCount, "baseline should not use hysteresis gating");
+}
+
+FACT(M14c_Runtime_ReentryHysteresis_BlocksBorderlineReentryUntilStrongerSignal)
+{
+    HftState initial = RuntimeBaseState();
+    initial.enableReentryHysteresis = true;
+    initial.reentryHysteresisMargin = 2;
+
+    const std::vector<MarketEvent> mailbox{
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 6 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 7 }
+    };
+
+    const HftRunOutput run = RunHftGoldenPath(initial, mailbox);
+
+    ASSERT_EQUAL(3, static_cast<int>(run.actuation.size()), "hysteresis path should still eventually reenter once stronger signal arrives");
+    ASSERT_EQUAL(static_cast<int>(DecisionKind::SubmitBuy), static_cast<int>(run.actuation.back().kind), "last action should be delayed reentry submit");
+    ASSERT_EQUAL(1, run.finalState.reentryBlockedByHysteresisCount, "borderline reentry should be explicitly blocked once");
+    ASSERT_EQUAL(2, run.finalState.lastReentryLatencyTicks, "hysteresis should delay reentry by one extra event");
+}
+
+FACT(M14c_Runtime_MinCommit_BlocksImmediateSecondStaleCancelFlip)
+{
+    HftState initial = RuntimeBaseState();
+    initial.enableMinCommit = true;
+    initial.minCommitTicks = 2;
+    initial.staleTickThreshold = 0;
+
+    const std::vector<MarketEvent> mailbox{
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 8 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 8 },
+        MarketEvent{ .bestBid = 99, .bestAsk = 100, .signal = 8 }
+    };
+
+    const HftRunOutput run = RunHftGoldenPath(initial, mailbox);
+
+    ASSERT_EQUAL(5, static_cast<int>(run.actuation.size()), "min-commit path should submit-cancel-submit-hold-hold-cancel-submit pattern");
+    ASSERT_EQUAL(2, run.finalState.cancelCount, "second stale cancel should still happen after min-commit window expires");
+    ASSERT_TRUE(run.finalState.staleCancelBlockedByMinCommitCount >= 1, "min-commit should block at least one stale cancel attempt");
+    ASSERT_TRUE(run.finalState.orderStateFlipCount >= 4, "order-state flip counter should track cancel and submit transitions");
+}

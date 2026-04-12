@@ -1,5 +1,7 @@
 #include "hft_model.h"
 
+#include <cstdlib>
+
 namespace dragongod_samples::dragon_hft
 {
     [[nodiscard]] bool IsActionableSignal(const int signal, const int threshold)
@@ -63,6 +65,17 @@ namespace dragongod_samples::dragon_hft
         }
 
         return desiredSide != state.outstandingOrder;
+    }
+
+    [[nodiscard]] bool ReentryHysteresisSatisfied(const int signal, const HftState& state)
+    {
+        if (!state.enableReentryHysteresis) {
+            return true;
+        }
+
+        const int absoluteSignal = std::abs(signal);
+        const int requiredSignal = state.threshold + state.reentryHysteresisMargin;
+        return absoluteSignal >= requiredSignal;
     }
 
     [[nodiscard]] int PriceForOrder(const MarketEvent& event, const OrderSide side)
