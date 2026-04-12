@@ -1,20 +1,16 @@
-[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=87420864 avg_ns=8742
-[BENCH] DragonRouter_QueueRetryHeavyBench iterations=3000 elapsed_ns=218053648 avg_ns=72684
-[BENCH] DragonRouter_QueueRetryLightBench iterations=5000 elapsed_ns=78237653 avg_ns=15647
-[BENCH] DragonRouter_UtilityCandidates1Bench iterations=10000 elapsed_ns=81611942 avg_ns=8161
-[BENCH] DragonRouter_UtilityCandidates2Bench iterations=10000 elapsed_ns=105838184 avg_ns=10583
-[BENCH] DragonRouter_UtilityCandidates4Bench iterations=10000 elapsed_ns=114997255 avg_ns=11499
-[BENCH] DragonRouter_UtilityCandidates8Bench iterations=10000 elapsed_ns=145067990 avg_ns=14506
+# Dragon Router benchmark results (M12f)
 
-Benchmark Summary: 7 benchmark(s)
+Command:
+./out/dragon_router_tests --bench DragonRouter_
 
---- second run ---
-[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=83474142 avg_ns=8347
-[BENCH] DragonRouter_QueueRetryHeavyBench iterations=3000 elapsed_ns=198567513 avg_ns=66189
-[BENCH] DragonRouter_QueueRetryLightBench iterations=5000 elapsed_ns=91955196 avg_ns=18391
-[BENCH] DragonRouter_UtilityCandidates1Bench iterations=10000 elapsed_ns=110830437 avg_ns=11083
-[BENCH] DragonRouter_UtilityCandidates2Bench iterations=10000 elapsed_ns=100104940 avg_ns=10010
-[BENCH] DragonRouter_UtilityCandidates4Bench iterations=10000 elapsed_ns=120045734 avg_ns=12004
-[BENCH] DragonRouter_UtilityCandidates8Bench iterations=10000 elapsed_ns=151038779 avg_ns=15103
+[BENCH] DragonRouter_ForwardKnownRouteBench iterations=10000 elapsed_ns=69436082 avg_ns=6943
+[BENCH] DragonRouter_QueueRetryBackoffBench iterations=3000 elapsed_ns=120402542 avg_ns=40134
+[BENCH] DragonRouter_QueueRetryBaselineBench iterations=3000 elapsed_ns=175845271 avg_ns=58615
+[BENCH] DragonRouter_QueueRetryConditionAwareBench iterations=3000 elapsed_ns=160553355 avg_ns=53517
+[BENCH] DragonRouter_QueueRetryLightBench iterations=5000 elapsed_ns=71504111 avg_ns=14300
+[BENCH] DragonRouter_UtilityCandidates1Bench iterations=10000 elapsed_ns=68676622 avg_ns=6867
+[BENCH] DragonRouter_UtilityCandidates2Bench iterations=10000 elapsed_ns=81687927 avg_ns=8168
+[BENCH] DragonRouter_UtilityCandidates4Bench iterations=10000 elapsed_ns=96289787 avg_ns=9628
+[BENCH] DragonRouter_UtilityCandidates8Bench iterations=10000 elapsed_ns=119709797 avg_ns=11970
 
-Benchmark Summary: 7 benchmark(s)
+Benchmark Summary: 9 benchmark(s)

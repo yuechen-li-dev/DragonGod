@@ -46,6 +46,13 @@ namespace dragongod_samples::dragon_router
 
     struct RouterState
     {
+        enum class RetryHeuristic
+        {
+            BaselineFixedDelay,
+            BackoffDelay,
+            ConditionAware
+        };
+
         std::vector<RouteEntry> routes;
         std::vector<PortState> ports;
         std::vector<QueueEntry> queuedPackets;
@@ -53,8 +60,13 @@ namespace dragongod_samples::dragon_router
         int droppedCount = 0;
         int queuedCount = 0;
         int drainedCount = 0;
+        int retryAttempts = 0;
+        int retrySkippedCount = 0;
         int currentTick = 0;
         int retryDelayTicks = 1;
+        int maxBackoffDelayTicks = 3;
+        int retryConditionMaxCongestion = 70;
+        RetryHeuristic retryHeuristic = RetryHeuristic::BaselineFixedDelay;
 
         [[nodiscard]] bool operator==(const RouterState& other) const = default;
     };

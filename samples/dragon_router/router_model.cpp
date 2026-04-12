@@ -2,6 +2,37 @@
 
 namespace dragongod_samples::dragon_router
 {
+    [[nodiscard]] int ComputeRetryDelayTicks(const RouterState& state, const int retryCount)
+    {
+        if (state.retryHeuristic != RouterState::RetryHeuristic::BackoffDelay) {
+            return state.retryDelayTicks;
+        }
+
+        const int delayedTicks = state.retryDelayTicks + retryCount;
+        if (delayedTicks > state.maxBackoffDelayTicks) {
+            return state.maxBackoffDelayTicks;
+        }
+
+        return delayedTicks;
+    }
+
+    [[nodiscard]] bool HasConditionAwareRetrySignal(const RouterState& state, const int destinationId)
+    {
+        const std::vector<RouteEntry> candidates = FindCandidateRoutes(state, destinationId);
+        for (const RouteEntry& route : candidates) {
+            const PortState* port = FindPort(state, route.egressPort);
+            if (port == nullptr) {
+                continue;
+            }
+
+            if (port->linkUp && !port->queueFull && port->congestionScore <= state.retryConditionMaxCongestion) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     [[nodiscard]] PacketResult ExecutePacket(
         RouterState& state,
         const Packet& packet,
@@ -109,6 +140,23 @@ namespace dragongod_samples::dragon_router
                 continue;
             }
 
+            if (state.retryHeuristic == RouterState::RetryHeuristic::ConditionAware &&
+                !HasConditionAwareRetrySignal(state, queued.packet.destinationId)) {
+                state.retrySkippedCount += 1;
+                queued.nextRetryTick = state.currentTick + state.retryDelayTicks;
+                actuation.push_back(Actuation{
+                    .kind = ActuationKind::RetryDeferred,
+                    .packetId = queued.packet.packetId,
+                    .portId = -1,
+                    .reason = "DeferredRetrySkippedNoRecoverySignal"
+                });
+                trace.push_back(
+                    "Drain packet=" + std::to_string(queued.packet.packetId) +
+                    " action=skip-retry signal=absent");
+                ++index;
+                continue;
+            }
+
             const int selectedPort = SelectBestEgressPort(state, queued.packet.destinationId);
             if (selectedPort >= 0) {
                 state.forwardedCount += 1;
@@ -127,7 +175,8 @@ namespace dragongod_samples::dragon_router
             }
 
             queued.retryCount += 1;
-            queued.nextRetryTick = state.currentTick + state.retryDelayTicks;
+            state.retryAttempts += 1;
+            queued.nextRetryTick = state.currentTick + ComputeRetryDelayTicks(state, queued.retryCount);
             actuation.push_back(Actuation{
                 .kind = ActuationKind::RetryDeferred,
                 .packetId = queued.packet.packetId,
@@ -136,7 +185,8 @@ namespace dragongod_samples::dragon_router
             });
             trace.push_back(
                 "Drain packet=" + std::to_string(queued.packet.packetId) +
-                " action=defer retry=" + std::to_string(queued.retryCount));
+                " action=defer retry=" + std::to_string(queued.retryCount) +
+                " next-retry-at=" + std::to_string(queued.nextRetryTick));
             ++index;
         }
     }

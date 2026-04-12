@@ -68,7 +68,34 @@ namespace
         g_routerBenchSink += output.finalState.queuedCount;
         g_routerBenchSink += output.finalState.drainedCount;
         g_routerBenchSink += output.finalState.droppedCount;
+        g_routerBenchSink += output.finalState.retryAttempts;
+        g_routerBenchSink += output.finalState.retrySkippedCount;
         g_routerBenchSink += static_cast<std::int64_t>(output.actuation.size());
+    }
+
+    void RunHeavyQueueRetryScenario(
+        RouterState::RetryHeuristic heuristic,
+        const std::uint64_t iteration)
+    {
+        RouterState state = BuildQueueState(true);
+        state.retryHeuristic = heuristic;
+
+        const Packet packetA = BuildPacket(11, iteration * 3);
+        const Packet packetB = BuildPacket(11, iteration * 3 + 1);
+        const Packet packetC = BuildPacket(11, iteration * 3 + 2);
+
+        const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packetA, packetB, packetC });
+
+        RouterState blockedRetryState = queuedRun.finalState;
+        const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(blockedRetryState, {});
+
+        RouterState recoverState = blockedRetryRun.finalState;
+        recoverState.ports[0].queueFull = false;
+        const RouterRunOutput recoveredDrainRun = RunRouterGoldenPath(recoverState, {});
+
+        ConsumeResult(queuedRun);
+        ConsumeResult(blockedRetryRun);
+        ConsumeResult(recoveredDrainRun);
     }
 }
 
@@ -122,24 +149,17 @@ BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryLightBench, 5000)
     ConsumeResult(drainedRun);
 }
 
-BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryHeavyBench, 3000)
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryBaselineBench, 3000)
 {
-    RouterState state = BuildQueueState(true);
+    RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::BaselineFixedDelay, context.iteration);
+}
 
-    const Packet packetA = BuildPacket(11, context.iteration * 3);
-    const Packet packetB = BuildPacket(11, context.iteration * 3 + 1);
-    const Packet packetC = BuildPacket(11, context.iteration * 3 + 2);
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryBackoffBench, 3000)
+{
+    RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::BackoffDelay, context.iteration);
+}
 
-    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packetA, packetB, packetC });
-
-    RouterState blockedRetryState = queuedRun.finalState;
-    const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(blockedRetryState, {});
-
-    RouterState recoverState = blockedRetryRun.finalState;
-    recoverState.ports[0].queueFull = false;
-    const RouterRunOutput recoveredDrainRun = RunRouterGoldenPath(recoverState, {});
-
-    ConsumeResult(queuedRun);
-    ConsumeResult(blockedRetryRun);
-    ConsumeResult(recoveredDrainRun);
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryConditionAwareBench, 3000)
+{
+    RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::ConditionAware, context.iteration);
 }

@@ -1,58 +1,60 @@
-# Dragon Router benchmark report (M12e)
+# Dragon Router benchmark report (M12f)
 
 ## 1) Purpose
 
-This report documents a bounded M12e scaling/sensitivity experiment for the Dragon Router sample.
+This report documents a bounded M12f experiment focused on the Dragon Router queue/retry/drain path.
 
-The question for this pass is narrower than M12d:
+Question for this pass:
 
-> Within this sample, which cost drivers appear to dominate: baseline forwarding, candidate-count utility selection, or queue/retry/drain behavior?
+> Can small deterministic retry heuristics reduce wasted deferred work on the heavy recovery path while preserving recovery behavior?
 
 This report does **not** claim production-router throughput, protocol completeness, or hardware replacement.
 
 ## 2) Scope and experiment dimensions
 
-The measured code path remains sample-local and unchanged in semantics:
+The runtime path remains sample-local and deterministic:
 
-- deterministic route decision
-- utility-based candidate selection
+- route candidate selection and utility scoring
 - forward/drop/queue outcomes
 - deferred retry/drain behavior
 
-M12e varies only two bounded dimensions:
+M12f compares three retry heuristics on the heavy recovery shape:
 
-1. **Candidate-count scaling** for utility selection:
-   - `1`, `2`, `4`, and `8` healthy route candidates
-2. **Queue-pressure scaling** for deferred behavior:
-   - `light`: one queued packet then recovery drain
-   - `heavy`: three queued packets, one blocked retry pass, then recovery drain
+1. **BaselineFixedDelay**
+   - Existing fixed retry cadence (`retryDelayTicks`).
+2. **BackoffDelay**
+   - Retry delay grows with retry count and is capped (`maxBackoffDelayTicks`).
+3. **ConditionAware**
+   - Retry pass is skipped when no healthy usable recovery signal exists (link-up, queue-not-full, and congestion at/below configured bound).
 
-No new router features or protocol families were introduced in this pass.
+## 3) Metrics used for interpretation
 
-## 3) Benchmark scenarios
+The benchmark lane still reports elapsed/average time, and the runtime now also tracks bounded deferred-work counters in state:
 
-The benchmark lane now contains seven sample-local scenarios:
+- `retryAttempts`: number of failed retry attempts that actually executed
+- `retrySkippedCount`: number of deferred retry passes skipped by condition-aware gating
+- `drainedCount`: number of queued packets eventually forwarded
+- `queuedPackets.size()` at end: deferred backlog still pending
 
-1. **`DragonRouter_ForwardKnownRouteBench`**
-   - One packet, known healthy route, direct forward path.
-   - Baseline forward/reference cost.
+These counters are validated in sample-local runtime tests and are intended to make tradeoffs visible beyond wall-clock timing.
 
-2. **`DragonRouter_UtilityCandidates1Bench`**
-3. **`DragonRouter_UtilityCandidates2Bench`**
-4. **`DragonRouter_UtilityCandidates4Bench`**
-5. **`DragonRouter_UtilityCandidates8Bench`**
-   - One packet with increasing candidate-set size for utility path choice.
-   - Isolates cost sensitivity to candidate enumeration/scoring in the real route decision path.
+## 4) Benchmark scenarios
 
-6. **`DragonRouter_QueueRetryLightBench`**
-   - Blocked pass queues one packet, then unblocked pass drains.
-   - Exercises queue + recovery behavior with modest deferred work.
+Benchmarks in this pass:
 
-7. **`DragonRouter_QueueRetryHeavyBench`**
-   - Blocked pass queues three packets, second blocked pass performs deferred retries, third pass unblocks and drains.
-   - Exercises a heavier deferred-work shape without adding new semantics.
+- `DragonRouter_ForwardKnownRouteBench`
+- `DragonRouter_UtilityCandidates1Bench`
+- `DragonRouter_UtilityCandidates2Bench`
+- `DragonRouter_UtilityCandidates4Bench`
+- `DragonRouter_UtilityCandidates8Bench`
+- `DragonRouter_QueueRetryLightBench`
+- `DragonRouter_QueueRetryBaselineBench`
+- `DragonRouter_QueueRetryBackoffBench`
+- `DragonRouter_QueueRetryConditionAwareBench`
 
-## 4) Execution environment / run conditions
+The three heavy queue/retry benchmarks run the same blocked->blocked->recovered shape, changing only retry heuristic.
+
+## 5) Execution environment / run conditions
 
 Observed run conditions for this report:
 
@@ -60,67 +62,53 @@ Observed run conditions for this report:
   - `g++ -std=c++23 -Wall -Wextra -pedantic -DMARIONETTE_TEST_REPO_ROOT="/workspace/DragonGod" ... -o out/dragon_router_tests`
 - benchmark command:
   - `./out/dragon_router_tests --bench DragonRouter_`
-- benchmark harness mode:
-  - Marionette benchmark mode via `--bench`
 - compiler observed:
   - `g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0`
 
-Machine-level controls (CPU pinning/isolation/frequency policy) were not captured by harness output.
+Machine-level CPU controls were not captured by harness output.
 
-## 5) Results
+## 6) Results
 
 Raw benchmark output is preserved in `samples/dragon_router/bench-results.txt`.
 
-### Run 1
-
 | Benchmark | Iterations | Elapsed (ns) | Avg (ns) |
 |---|---:|---:|---:|
-| DragonRouter_ForwardKnownRouteBench | 10000 | 87,420,864 | 8,742 |
-| DragonRouter_UtilityCandidates1Bench | 10000 | 81,611,942 | 8,161 |
-| DragonRouter_UtilityCandidates2Bench | 10000 | 105,838,184 | 10,583 |
-| DragonRouter_UtilityCandidates4Bench | 10000 | 114,997,255 | 11,499 |
-| DragonRouter_UtilityCandidates8Bench | 10000 | 145,067,990 | 14,506 |
-| DragonRouter_QueueRetryLightBench | 5000 | 78,237,653 | 15,647 |
-| DragonRouter_QueueRetryHeavyBench | 3000 | 218,053,648 | 72,684 |
+| DragonRouter_ForwardKnownRouteBench | 10,000 | 69,436,082 | 6,943 |
+| DragonRouter_UtilityCandidates1Bench | 10,000 | 68,676,622 | 6,867 |
+| DragonRouter_UtilityCandidates2Bench | 10,000 | 81,687,927 | 8,168 |
+| DragonRouter_UtilityCandidates4Bench | 10,000 | 96,289,787 | 9,628 |
+| DragonRouter_UtilityCandidates8Bench | 10,000 | 119,709,797 | 11,970 |
+| DragonRouter_QueueRetryLightBench | 5,000 | 71,504,111 | 14,300 |
+| DragonRouter_QueueRetryBaselineBench | 3,000 | 175,845,271 | 58,615 |
+| DragonRouter_QueueRetryBackoffBench | 3,000 | 120,402,542 | 40,134 |
+| DragonRouter_QueueRetryConditionAwareBench | 3,000 | 160,553,355 | 53,517 |
 
-### Run 2
+## 7) Bounded interpretation
 
-| Benchmark | Iterations | Elapsed (ns) | Avg (ns) |
-|---|---:|---:|---:|
-| DragonRouter_ForwardKnownRouteBench | 10000 | 83,474,142 | 8,347 |
-| DragonRouter_UtilityCandidates1Bench | 10000 | 110,830,437 | 11,083 |
-| DragonRouter_UtilityCandidates2Bench | 10000 | 100,104,940 | 10,010 |
-| DragonRouter_UtilityCandidates4Bench | 10000 | 120,045,734 | 12,004 |
-| DragonRouter_UtilityCandidates8Bench | 10000 | 151,038,779 | 15,103 |
-| DragonRouter_QueueRetryLightBench | 5000 | 91,955,196 | 18,391 |
-| DragonRouter_QueueRetryHeavyBench | 3000 | 198,567,513 | 66,189 |
+Bounded reading from this run:
 
-## 6) Bounded interpretation
+- Heavy queue/retry remains the dominant cost lane relative to direct forwarding.
+- Backoff reduced heavy-lane timing most in this run, consistent with fewer immediate retry attempts under persistent blockage.
+- Condition-aware gating also improved heavy-lane timing vs baseline, but less than backoff in this particular run.
+- Utility candidate scaling trend still rises as candidate count increases.
 
-Bounded interpretation from these two runs:
+Tradeoff note:
 
-- **Queue-pressure dominates** this lane: `QueueRetryHeavy` is consistently the most expensive scenario by a large margin, and `QueueRetryLight` is materially above baseline forwarding.
-- **Candidate-count sensitivity appears real**: moving from `2` to `4` to `8` candidates trends upward in both runs, consistent with more utility-candidate work.
-- **Low-end candidate variance is noisy** in this environment (`1` vs `2` swapped ordering across runs), so only broad trends should be claimed.
+- A lower heavy-path cost here comes from doing less immediate retry work, not from any protocol expansion.
+- This pass does not claim that these heuristics are universally better under all traffic/recovery timelines.
 
-Within this bounded sample, the strongest supported reading is that deferred queue/retry/drain behavior is the primary cost driver, while utility candidate growth contributes a secondary, measurable cost trend.
+## 8) What this does and does not conclude
 
-## 7) What this does and does not conclude
+This experiment supports sample-local conclusions only:
 
-This experiment supports only sample-local conclusions:
+- deterministic retry heuristics can materially change heavy deferred-work cost in this sample
+- measured gains are bounded to this setup and single observed environment
+- this does not establish production dataplane throughput or system-level router behavior
 
-- it helps explain cost shape inside the Dragon Router sample
-- it does not establish production line-rate feasibility
-- it does not compare against ASIC dataplanes
-- it does not validate real-world protocol-stack performance
+## 9) Limitations
 
-## 8) Limitations
-
-This report still has explicit limits:
-
-- bounded sample only, not a full router
-- no real packet parsing pipeline
-- no NIC/kernel-bypass/DPDK/XDP dataplane integration
-- no production routing protocols
-- only two runs in one environment
-- no captured machine metadata beyond visible commands/compiler
+- bounded sample only
+- no NIC/kernel-bypass dataplane integration
+- no production routing protocol stack
+- single benchmark capture in one environment
+- no machine metadata beyond visible command/compiler output
