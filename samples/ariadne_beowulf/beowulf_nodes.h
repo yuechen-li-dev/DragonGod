@@ -10,7 +10,7 @@ namespace dragongod_samples::ariadne_beowulf
     struct BeowulfRunRequest
     {
         std::vector<dragongod::Message> mailboxInput;
-        int maxSteps = 8;
+        int maxSteps = 12;
 
         [[nodiscard]] bool operator==(const BeowulfRunRequest& other) const = default;
     };

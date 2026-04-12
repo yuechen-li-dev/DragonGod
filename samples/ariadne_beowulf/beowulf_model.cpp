@@ -14,7 +14,11 @@ namespace dragongod_samples::ariadne_beowulf
             .retainersFled = false,
             .wiglafRemains = false,
             .collapseSpoken = false,
-            .wiglafSpoken = false
+            .wiglafSpoken = false,
+            .beowulfFallen = false,
+            .lastWordsSpoken = false,
+            .endingCompleted = false,
+            .legacyTone = BeowulfLegacyTone::Unset
         };
     }
 
@@ -49,6 +53,22 @@ namespace dragongod_samples::ariadne_beowulf
         }
 
         if (state.collapseSpoken && !state.retainersFled) {
+            return false;
+        }
+
+        if (state.beowulfFallen && !state.wiglafRemains) {
+            return false;
+        }
+
+        if (state.lastWordsSpoken && !state.beowulfFallen) {
+            return false;
+        }
+
+        if (state.endingCompleted && !state.lastWordsSpoken) {
+            return false;
+        }
+
+        if (state.endingCompleted && state.legacyTone == BeowulfLegacyTone::Unset) {
             return false;
         }
 
@@ -107,7 +127,24 @@ namespace dragongod_samples::ariadne_beowulf
         return std::nullopt;
     }
 
-    [[nodiscard]] std::vector<std::string> BuildSceneLines(const BeowulfScene scene, const BeowulfTone tone)
+    [[nodiscard]] std::optional<BeowulfLegacyTone> TryLegacyToneFromState(const BeowulfTone tone, const BeowulfLoyaltyPressure pressure)
+    {
+        if (tone == BeowulfTone::Proud && pressure == BeowulfLoyaltyPressure::BoastShattered) {
+            return BeowulfLegacyTone::LonelyAsh;
+        }
+
+        if (tone == BeowulfTone::Grim && pressure == BeowulfLoyaltyPressure::DoomWeight) {
+            return BeowulfLegacyTone::DoomEmber;
+        }
+
+        if (tone == BeowulfTone::Kingly && pressure == BeowulfLoyaltyPressure::OathBurden) {
+            return BeowulfLegacyTone::OathKept;
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::vector<std::string> BuildSceneLines(const BeowulfScene scene, const BeowulfTone tone, const BeowulfLegacyTone legacyTone)
     {
         if (scene == BeowulfScene::BarrowApproach) {
             return std::vector<std::string>{
@@ -185,6 +222,46 @@ namespace dragongod_samples::ariadne_beowulf
                 "The fight narrows to king and heir of courage.",
                 "Flame and fate draw close together.",
                 "Night leans toward its grievous turn."
+            };
+        }
+
+        if (scene == BeowulfScene::BeowulfFalls) {
+            return std::vector<std::string>{
+                "The dragon's heat bites through old mail.",
+                "Beowulf sinks beside the hoard-fire.",
+                "Wiglaf holds him above the ash."
+            };
+        }
+
+        if (scene == BeowulfScene::LastWords) {
+            return std::vector<std::string>{
+                "My days are spent; keep faith after me.",
+                "Take this people in a steadier hand.",
+                "Let the fire remember what we kept."
+            };
+        }
+
+        if (scene == BeowulfScene::LegacyEnding) {
+            if (legacyTone == BeowulfLegacyTone::LonelyAsh) {
+                return std::vector<std::string>{
+                    "Gold glows cold in a leaderless dark.",
+                    "A king's boast ends in wind and ash.",
+                    "Wiglaf stands alone by the barrow-fire."
+                };
+            }
+
+            if (legacyTone == BeowulfLegacyTone::DoomEmber) {
+                return std::vector<std::string>{
+                    "The hoard burns low; doom keeps its ember.",
+                    "The old king named the end and met it.",
+                    "Wiglaf bears that hard truth into dawn."
+                };
+            }
+
+            return std::vector<std::string>{
+                "Treasure smolders beneath a mourning sky.",
+                "The ring-giver falls, but the oath holds.",
+                "Wiglaf keeps the line where flame has passed."
             };
         }
 

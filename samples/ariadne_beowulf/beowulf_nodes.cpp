@@ -17,7 +17,10 @@ namespace dragongod_samples::ariadne_beowulf
             EnterRetainerCollapse = 4,
             EnterWiglafRemains = 5,
             EnterTragicHandoff = 6,
-            Completed = 7
+            EnterDeath = 7,
+            EnterLastWords = 8,
+            EnterLegacyEnding = 9,
+            Completed = 10
         };
 
         struct StoryFrameCtx
@@ -54,6 +57,10 @@ namespace dragongod_samples::ariadne_beowulf
             constexpr dragongod::BbKey<bool> WiglafRemains{ "beowulf.wiglaf_remains", 207 };
             constexpr dragongod::BbKey<bool> CollapseSpoken{ "beowulf.collapse_spoken", 208 };
             constexpr dragongod::BbKey<bool> WiglafSpoken{ "beowulf.wiglaf_spoken", 209 };
+            constexpr dragongod::BbKey<bool> BeowulfFallen{ "beowulf.fallen", 210 };
+            constexpr dragongod::BbKey<bool> LastWordsSpoken{ "beowulf.last_words_spoken", 211 };
+            constexpr dragongod::BbKey<bool> EndingCompleted{ "beowulf.ending_completed", 212 };
+            constexpr dragongod::BbKey<int> LegacyTone{ "beowulf.legacy_tone", 213 };
         }
 
         void SyncStateToBlackboard(const BeowulfState& state, dragongod::Blackboard& blackboard)
@@ -68,6 +75,10 @@ namespace dragongod_samples::ariadne_beowulf
             blackboard.Set(Keys::WiglafRemains, state.wiglafRemains);
             blackboard.Set(Keys::CollapseSpoken, state.collapseSpoken);
             blackboard.Set(Keys::WiglafSpoken, state.wiglafSpoken);
+            blackboard.Set(Keys::BeowulfFallen, state.beowulfFallen);
+            blackboard.Set(Keys::LastWordsSpoken, state.lastWordsSpoken);
+            blackboard.Set(Keys::EndingCompleted, state.endingCompleted);
+            blackboard.Set(Keys::LegacyTone, static_cast<int>(state.legacyTone));
         }
 
         void SyncStateFromBlackboard(BeowulfState& state, const dragongod::Blackboard& blackboard)
@@ -82,6 +93,10 @@ namespace dragongod_samples::ariadne_beowulf
             state.wiglafRemains = blackboard.GetOr(Keys::WiglafRemains, false);
             state.collapseSpoken = blackboard.GetOr(Keys::CollapseSpoken, false);
             state.wiglafSpoken = blackboard.GetOr(Keys::WiglafSpoken, false);
+            state.beowulfFallen = blackboard.GetOr(Keys::BeowulfFallen, false);
+            state.lastWordsSpoken = blackboard.GetOr(Keys::LastWordsSpoken, false);
+            state.endingCompleted = blackboard.GetOr(Keys::EndingCompleted, false);
+            state.legacyTone = static_cast<BeowulfLegacyTone>(blackboard.GetOr(Keys::LegacyTone, static_cast<int>(BeowulfLegacyTone::Unset)));
         }
 
         [[nodiscard]] dragongod::FrameControl BarrowApproachFrame(StoryFrameCtx& ctx)
@@ -89,7 +104,7 @@ namespace dragongod_samples::ariadne_beowulf
             if (ctx.PcAsPhase() == NarrativePhase::EnterBarrow) {
                 ctx.state.scene = BeowulfScene::BarrowApproach;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.choices.clear();
                 ctx.output.awaitingChoice = false;
                 ctx.output.advanced = true;
@@ -106,7 +121,7 @@ namespace dragongod_samples::ariadne_beowulf
             if (ctx.PcAsPhase() == NarrativePhase::PresentChoice) {
                 ctx.state.scene = BeowulfScene::BeforeBattleChoice;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.choices = BuildPreBattleChoices();
                 ctx.output.awaitingChoice = true;
                 ctx.output.advanced = false;
@@ -156,7 +171,7 @@ namespace dragongod_samples::ariadne_beowulf
                 ctx.state.scene = BeowulfScene::FirstClash;
                 ctx.state.firstClashBegun = true;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.choices.clear();
                 ctx.output.awaitingChoice = false;
                 ctx.output.advanced = true;
@@ -170,7 +185,7 @@ namespace dragongod_samples::ariadne_beowulf
                 ctx.state.retainersFled = true;
                 ctx.state.collapseSpoken = true;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.advanced = true;
                 ctx.output.trace.push_back("scene:retainer_collapse");
                 ctx.output.trace.push_back("state:retainers_fled");
@@ -183,7 +198,7 @@ namespace dragongod_samples::ariadne_beowulf
                 ctx.state.wiglafRemains = true;
                 ctx.state.wiglafSpoken = true;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.advanced = true;
                 ctx.output.trace.push_back("scene:wiglaf_remains");
                 ctx.output.trace.push_back("state:wiglaf_remains");
@@ -194,15 +209,57 @@ namespace dragongod_samples::ariadne_beowulf
             if (ctx.PcAsPhase() == NarrativePhase::EnterTragicHandoff) {
                 ctx.state.scene = BeowulfScene::TragicHandoff;
                 ctx.output.scene = ctx.state.scene;
-                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone);
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
                 ctx.output.advanced = true;
                 ctx.output.trace.push_back("scene:tragic_handoff");
+                SyncStateToBlackboard(ctx.state, ctx.Bb());
+                return dragongod::Dg::Continue(NarrativePhase::EnterDeath);
+            }
+
+            if (ctx.PcAsPhase() == NarrativePhase::EnterDeath) {
+                ctx.state.scene = BeowulfScene::BeowulfFalls;
+                ctx.state.beowulfFallen = true;
+                ctx.output.scene = ctx.state.scene;
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
+                ctx.output.advanced = true;
+                ctx.output.trace.push_back("scene:beowulf_falls");
+                ctx.output.trace.push_back("state:beowulf_fallen");
+                SyncStateToBlackboard(ctx.state, ctx.Bb());
+                return dragongod::Dg::Continue(NarrativePhase::EnterLastWords);
+            }
+
+            if (ctx.PcAsPhase() == NarrativePhase::EnterLastWords) {
+                ctx.state.scene = BeowulfScene::LastWords;
+                ctx.state.lastWordsSpoken = true;
+                ctx.output.scene = ctx.state.scene;
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
+                ctx.output.advanced = true;
+                ctx.output.trace.push_back("scene:last_words");
+                ctx.output.trace.push_back("state:last_words_spoken");
+                SyncStateToBlackboard(ctx.state, ctx.Bb());
+                return dragongod::Dg::Continue(NarrativePhase::EnterLegacyEnding);
+            }
+
+            if (ctx.PcAsPhase() == NarrativePhase::EnterLegacyEnding) {
+                const std::optional<BeowulfLegacyTone> legacyTone = TryLegacyToneFromState(ctx.state.tone, ctx.state.loyaltyPressure);
+                if (!legacyTone.has_value()) {
+                    ctx.output.trace.push_back("invalid_legacy_tone");
+                    return dragongod::Dg::Fail(7);
+                }
+
+                ctx.state.scene = BeowulfScene::LegacyEnding;
+                ctx.state.legacyTone = *legacyTone;
+                ctx.output.scene = ctx.state.scene;
+                ctx.output.sceneLines = BuildSceneLines(ctx.state.scene, ctx.state.tone, ctx.state.legacyTone);
+                ctx.output.advanced = true;
+                ctx.output.trace.push_back("scene:legacy_ending");
                 SyncStateToBlackboard(ctx.state, ctx.Bb());
                 return dragongod::Dg::Continue(NarrativePhase::Completed);
             }
 
             if (ctx.PcAsPhase() == NarrativePhase::Completed) {
                 ctx.state.scene = BeowulfScene::Completed;
+                ctx.state.endingCompleted = true;
                 ctx.output.scene = ctx.state.scene;
                 ctx.output.trace.push_back("scene:completed");
                 SyncStateToBlackboard(ctx.state, ctx.Bb());
