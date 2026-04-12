@@ -7,3 +7,4 @@ Samples are where we stress assumptions, measure friction, and validate integrat
 Current samples:
 
 - `dragon_router/`: scaffold for a bounded router/control-loop experiment.
+- `dragon_hft/`: scaffold for a bounded market-reaction/order-decision/stale-recovery experiment.
