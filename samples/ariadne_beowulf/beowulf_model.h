@@ -13,7 +13,10 @@ namespace dragongod_samples::ariadne_beowulf
         BarrowApproach = 0,
         BeforeBattleChoice = 1,
         FirstClash = 2,
-        Completed = 3
+        RetainerCollapse = 3,
+        WiglafRemains = 4,
+        TragicHandoff = 5,
+        Completed = 6
     };
 
     enum class BeowulfTone
@@ -22,6 +25,14 @@ namespace dragongod_samples::ariadne_beowulf
         Proud = 1,
         Grim = 2,
         Kingly = 3
+    };
+
+    enum class BeowulfLoyaltyPressure
+    {
+        Unset = 0,
+        BoastShattered = 1,
+        DoomWeight = 2,
+        OathBurden = 3
     };
 
     enum class BeowulfChoiceId
@@ -43,9 +54,14 @@ namespace dragongod_samples::ariadne_beowulf
     {
         BeowulfScene scene = BeowulfScene::BarrowApproach;
         BeowulfTone tone = BeowulfTone::Unset;
+        BeowulfLoyaltyPressure loyaltyPressure = BeowulfLoyaltyPressure::Unset;
         int resolve = 0;
         bool preBattleChoiceConsumed = false;
         bool firstClashBegun = false;
+        bool retainersFled = false;
+        bool wiglafRemains = false;
+        bool collapseSpoken = false;
+        bool wiglafSpoken = false;
 
         [[nodiscard]] bool operator==(const BeowulfState& other) const = default;
     };
@@ -67,5 +83,6 @@ namespace dragongod_samples::ariadne_beowulf
     [[nodiscard]] std::vector<BeowulfChoice> BuildPreBattleChoices();
     [[nodiscard]] std::optional<BeowulfTone> TryToneFromChoiceId(BeowulfChoiceId choice);
     [[nodiscard]] std::optional<BeowulfTone> TryToneFromMessage(const dragongod::Message& message);
+    [[nodiscard]] std::optional<BeowulfLoyaltyPressure> TryLoyaltyPressureFromTone(BeowulfTone tone);
     [[nodiscard]] std::vector<std::string> BuildSceneLines(BeowulfScene scene, BeowulfTone tone);
 }

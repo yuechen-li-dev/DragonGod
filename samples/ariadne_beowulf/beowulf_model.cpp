@@ -7,9 +7,14 @@ namespace dragongod_samples::ariadne_beowulf
         return BeowulfState{
             .scene = BeowulfScene::BarrowApproach,
             .tone = BeowulfTone::Unset,
+            .loyaltyPressure = BeowulfLoyaltyPressure::Unset,
             .resolve = 0,
             .preBattleChoiceConsumed = false,
-            .firstClashBegun = false
+            .firstClashBegun = false,
+            .retainersFled = false,
+            .wiglafRemains = false,
+            .collapseSpoken = false,
+            .wiglafSpoken = false
         };
     }
 
@@ -23,7 +28,27 @@ namespace dragongod_samples::ariadne_beowulf
             return false;
         }
 
+        if (state.preBattleChoiceConsumed && state.loyaltyPressure == BeowulfLoyaltyPressure::Unset) {
+            return false;
+        }
+
         if (state.firstClashBegun && state.scene == BeowulfScene::BarrowApproach) {
+            return false;
+        }
+
+        if (state.retainersFled && !state.firstClashBegun) {
+            return false;
+        }
+
+        if (state.wiglafRemains && !state.retainersFled) {
+            return false;
+        }
+
+        if (state.wiglafSpoken && !state.wiglafRemains) {
+            return false;
+        }
+
+        if (state.collapseSpoken && !state.retainersFled) {
             return false;
         }
 
@@ -65,6 +90,23 @@ namespace dragongod_samples::ariadne_beowulf
         return TryToneFromChoiceId(static_cast<BeowulfChoiceId>(message.value));
     }
 
+    [[nodiscard]] std::optional<BeowulfLoyaltyPressure> TryLoyaltyPressureFromTone(const BeowulfTone tone)
+    {
+        if (tone == BeowulfTone::Proud) {
+            return BeowulfLoyaltyPressure::BoastShattered;
+        }
+
+        if (tone == BeowulfTone::Grim) {
+            return BeowulfLoyaltyPressure::DoomWeight;
+        }
+
+        if (tone == BeowulfTone::Kingly) {
+            return BeowulfLoyaltyPressure::OathBurden;
+        }
+
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::vector<std::string> BuildSceneLines(const BeowulfScene scene, const BeowulfTone tone)
     {
         if (scene == BeowulfScene::BarrowApproach) {
@@ -103,6 +145,46 @@ namespace dragongod_samples::ariadne_beowulf
                 "He speaks as ring-giver to his men.",
                 "Fire answers. The old guard tightens.",
                 "The first clash begins at king's command."
+            };
+        }
+
+        if (scene == BeowulfScene::RetainerCollapse) {
+            if (tone == BeowulfTone::Proud) {
+                return std::vector<std::string>{
+                    "Boast-smoke thins; their courage thins with it.",
+                    "Heat drives them from the shield-wall.",
+                    "Only one shadow does not break."
+                };
+            }
+
+            if (tone == BeowulfTone::Grim) {
+                return std::vector<std::string>{
+                    "He named doom true; now fear proves him right.",
+                    "Mail turns and runs from the furnace-breath.",
+                    "One young spear still faces fire."
+                };
+            }
+
+            return std::vector<std::string>{
+                "The oath-ring trembles in the dragon wind.",
+                "Thanes break rank and flee the blaze.",
+                "One kinsman keeps his place."
+            };
+        }
+
+        if (scene == BeowulfScene::WiglafRemains) {
+            return std::vector<std::string>{
+                "Wiglaf steps through ash to his lord.",
+                "Loyalty stands where numbers failed.",
+                "Two blades answer one doom."
+            };
+        }
+
+        if (scene == BeowulfScene::TragicHandoff) {
+            return std::vector<std::string>{
+                "The fight narrows to king and heir of courage.",
+                "Flame and fate draw close together.",
+                "Night leans toward its grievous turn."
             };
         }
 
