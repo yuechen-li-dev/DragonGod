@@ -133,3 +133,26 @@ FACT(M14c_Runtime_MinCommit_BlocksImmediateSecondStaleCancelFlip)
     ASSERT_TRUE(run.finalState.staleCancelBlockedByMinCommitCount >= 1, "min-commit should block at least one stale cancel attempt");
     ASSERT_TRUE(run.finalState.orderStateFlipCount >= 4, "order-state flip counter should track cancel and submit transitions");
 }
+
+FACT(M14d_Runtime_ReentryOscillationScenario_ExposesChurnTradeoffsAcrossVariants)
+{
+    const std::vector<MarketEvent> mailbox = BuildReentryOscillationMailbox();
+
+    const HftRunOutput baselineRun = RunHftGoldenPath(BuildReentryOscillationBaselineState(), mailbox);
+    const HftRunOutput hysteresisRun = RunHftGoldenPath(BuildReentryOscillationHysteresisState(), mailbox);
+    const HftRunOutput minCommitRun = RunHftGoldenPath(BuildReentryOscillationMinCommitState(), mailbox);
+
+    ASSERT_EQUAL(2, baselineRun.finalState.reentrySubmitCount, "baseline should eagerly reenter twice in oscillation regime");
+    ASSERT_EQUAL(2, baselineRun.finalState.cancelCount, "baseline should cancel stale twice in oscillation regime");
+    ASSERT_EQUAL(1, baselineRun.finalState.lastReentryLatencyTicks, "baseline reentry latency should remain minimal");
+
+    ASSERT_EQUAL(1, hysteresisRun.finalState.reentrySubmitCount, "hysteresis should suppress borderline reentry churn");
+    ASSERT_EQUAL(2, hysteresisRun.finalState.reentryBlockedByHysteresisCount, "hysteresis should block both borderline reentry attempts");
+    ASSERT_EQUAL(4, hysteresisRun.finalState.lastReentryLatencyTicks, "hysteresis should trade churn reduction for slower reentry");
+    ASSERT_TRUE(hysteresisRun.finalState.orderStateFlipCount < baselineRun.finalState.orderStateFlipCount, "hysteresis should reduce order-state flips versus baseline");
+
+    ASSERT_EQUAL(1, minCommitRun.finalState.reentrySubmitCount, "min-commit should avoid a second reentry within the bounded oscillation window");
+    ASSERT_TRUE(minCommitRun.finalState.staleCancelBlockedByMinCommitCount >= 2, "min-commit should block repeated stale-cancel attempts while committed");
+    ASSERT_EQUAL(static_cast<int>(OrderSide::None), static_cast<int>(minCommitRun.finalState.outstandingOrder), "min-commit variant should still eventually cancel stale order");
+    ASSERT_TRUE(minCommitRun.finalState.orderStateFlipCount < baselineRun.finalState.orderStateFlipCount, "min-commit should reduce churn flips versus baseline in this bounded sequence");
+}
