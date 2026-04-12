@@ -169,15 +169,17 @@ namespace dragongod
 
             namespace Keys
             {
-                constexpr BbKey<bool> Alerted{ .name = "Alerted", .slot = 1 };
-                constexpr BbKey<bool> ChildSawAlerted{ .name = "ChildSawAlerted", .slot = 2 };
+                // Canonical blackboard fixture keys used by built-in proof/demo nodes.
+                // Slots are stable for deterministic coverage and are not domain assumptions.
+                constexpr BbKey<bool> HighSignal{ .name = "HighSignal", .slot = 1 };
+                constexpr BbKey<bool> ChildSawHighSignal{ .name = "ChildSawHighSignal", .slot = 2 };
                 constexpr BbKey<int> Counter{ .name = "Counter", .slot = 3 };
                 constexpr BbKey<int> FirstMessageValue{ .name = "FirstMessageValue", .slot = 4 };
                 constexpr BbKey<int> SecondMessageValue{ .name = "SecondMessageValue", .slot = 5 };
                 constexpr BbKey<int> SeenPeekValue{ .name = "SeenPeekValue", .slot = 6 };
                 constexpr BbKey<bool> MailboxTriggered{ .name = "MailboxTriggered", .slot = 7 };
-                constexpr BbKey<int> AlertScore{ .name = "AlertScore", .slot = 8 };
-                constexpr BbKey<int> LowAmmoScore{ .name = "LowAmmoScore", .slot = 9 };
+                constexpr BbKey<int> HighSignalScore{ .name = "HighSignalScore", .slot = 8 };
+                constexpr BbKey<int> ResourcePressureScore{ .name = "ResourcePressureScore", .slot = 9 };
                 constexpr BbKey<int> UtilityChoice{ .name = "UtilityChoice", .slot = 10 };
                 constexpr BbKey<int> UtilityDecisionsMade{ .name = "UtilityDecisionsMade", .slot = 11 };
                 constexpr BbKey<bool> ActMailboxSeen{ .name = "ActMailboxSeen", .slot = 12 };
@@ -245,10 +247,10 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::Alerted, true);
+                    ctx.Bb().Set(Keys::HighSignal, true);
                     return Dg::Continue(1);
                 case 1:
-                    if (ctx.Bb().GetOr(Keys::Alerted, false)) {
+                    if (ctx.Bb().GetOr(Keys::HighSignal, false)) {
                         return Dg::Complete();
                     }
 
@@ -262,7 +264,7 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    if (!ctx.Bb().GetOr(Keys::Alerted, false)) {
+                    if (!ctx.Bb().GetOr(Keys::HighSignal, false)) {
                         return Dg::Complete();
                     }
 
@@ -276,11 +278,11 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::Alerted, true);
+                    ctx.Bb().Set(Keys::HighSignal, true);
                     ctx.Bb().Set(Keys::Counter, 1);
                     return Dg::Push(FrameId::ChildReadParentBool, 1);
                 case 1:
-                    if (!ctx.Bb().GetOr(Keys::ChildSawAlerted, false)) {
+                    if (!ctx.Bb().GetOr(Keys::ChildSawHighSignal, false)) {
                         return Dg::Fail(304);
                     }
 
@@ -320,8 +322,8 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    if (ctx.Bb().GetOr(Keys::Alerted, false)) {
-                        ctx.Bb().Set(Keys::ChildSawAlerted, true);
+                    if (ctx.Bb().GetOr(Keys::HighSignal, false)) {
+                        ctx.Bb().Set(Keys::ChildSawHighSignal, true);
                         return Dg::Pop();
                     }
 
@@ -505,10 +507,11 @@ namespace dragongod
 
             [[nodiscard]] FrameControl RootUtilityHighestScore(FrameCtx& ctx)
             {
+                // Canonical utility fixture: neutral action names exercise selection behavior only.
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 10);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 80);
+                    ctx.Bb().Set(Keys::HighSignalScore, 10);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 80);
                     ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
                     return Dg::Continue(1);
                 case 1:
@@ -519,9 +522,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
-                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(FrameId::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
                 default:
@@ -533,14 +536,14 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 70);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 65);
+                    ctx.Bb().Set(Keys::HighSignalScore, 70);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 65);
                     ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
                     return Dg::Continue(1);
                 case 1:
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) == 1) {
-                        ctx.Bb().Set(Keys::AlertScore, 70);
-                        ctx.Bb().Set(Keys::LowAmmoScore, 74);
+                        ctx.Bb().Set(Keys::HighSignalScore, 70);
+                        ctx.Bb().Set(Keys::ResourcePressureScore, 74);
                     }
 
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 2) {
@@ -550,9 +553,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
-                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(FrameId::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{
                             .hysteresis = 0.10f,
@@ -567,14 +570,14 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 80);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 10);
+                    ctx.Bb().Set(Keys::HighSignalScore, 80);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 10);
                     ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
                     return Dg::Continue(1);
                 case 1:
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 1) {
-                        ctx.Bb().Set(Keys::AlertScore, 20);
-                        ctx.Bb().Set(Keys::LowAmmoScore, 90);
+                        ctx.Bb().Set(Keys::HighSignalScore, 20);
+                        ctx.Bb().Set(Keys::ResourcePressureScore, 90);
                     }
 
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 4) {
@@ -584,9 +587,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
-                            Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(FrameId::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{
                             .minCommitTicks = 2,
@@ -601,13 +604,13 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 50);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 20);
+                    ctx.Bb().Set(Keys::HighSignalScore, 50);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 20);
                     ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
                     return Dg::Continue(1);
                 case 1:
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) == 1) {
-                        ctx.Bb().Set(Keys::LowAmmoScore, 50);
+                        ctx.Bb().Set(Keys::ResourcePressureScore, 50);
                     }
 
                     if (ctx.Bb().GetOr(Keys::UtilityDecisionsMade, 0) >= 2) {
@@ -617,8 +620,8 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::KeepCurrent });
                 default:
@@ -630,13 +633,13 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 60);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 60);
+                    ctx.Bb().Set(Keys::HighSignalScore, 60);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 60);
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
                 case 1:
@@ -650,13 +653,13 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 60);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 60);
+                    ctx.Bb().Set(Keys::HighSignalScore, 60);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 60);
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                            Dg::when(FrameId::UtilityActionReload, When::LowAmmo)
+                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::LastListed });
                 case 1:
@@ -666,7 +669,7 @@ namespace dragongod
                 }
             }
 
-            [[nodiscard]] FrameControl UtilityActionCombat(FrameCtx& ctx)
+            [[nodiscard]] FrameControl UtilityActionPrimary(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
                 case 0:
@@ -678,7 +681,7 @@ namespace dragongod
                 }
             }
 
-            [[nodiscard]] FrameControl UtilityActionReload(FrameCtx& ctx)
+            [[nodiscard]] FrameControl UtilityActionSecondary(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
                 case 0:
@@ -690,7 +693,7 @@ namespace dragongod
                 }
             }
 
-            [[nodiscard]] FrameControl UtilityActionPatrol(FrameCtx& ctx)
+            [[nodiscard]] FrameControl UtilityActionFallback(FrameCtx& ctx)
             {
                 switch (ctx.Pc()) {
                 case 0:
@@ -768,14 +771,14 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Bb().Set(Keys::AlertScore, 80);
-                    ctx.Bb().Set(Keys::LowAmmoScore, 20);
+                    ctx.Bb().Set(Keys::HighSignalScore, 80);
+                    ctx.Bb().Set(Keys::ResourcePressureScore, 20);
                     return Dg::Continue(1);
                 case 1:
-                    if (When::Alerted(ctx) >= When::LowAmmo(ctx)) {
-                        ctx.Act().Immediate(ActId::UtilityCombat);
+                    if (When::HighSignal(ctx) >= When::ResourcePressure(ctx)) {
+                        ctx.Act().Immediate(ActId::UtilityPrimary);
                     } else {
-                        ctx.Act().Immediate(ActId::UtilityReload);
+                        ctx.Act().Immediate(ActId::UtilitySecondary);
                     }
 
                     return Dg::Complete();
@@ -819,9 +822,9 @@ namespace dragongod
         registry.Add(FrameId::RootUtilityTieBreakKeepCurrent, &nodes::RootUtilityTieBreakKeepCurrent);
         registry.Add(FrameId::RootUtilityTieBreakFirstListed, &nodes::RootUtilityTieBreakFirstListed);
         registry.Add(FrameId::RootUtilityTieBreakLastListed, &nodes::RootUtilityTieBreakLastListed);
-        registry.Add(FrameId::UtilityActionCombat, &nodes::UtilityActionCombat);
-        registry.Add(FrameId::UtilityActionReload, &nodes::UtilityActionReload);
-        registry.Add(FrameId::UtilityActionPatrol, &nodes::UtilityActionPatrol);
+        registry.Add(FrameId::UtilityActionPrimary, &nodes::UtilityActionPrimary);
+        registry.Add(FrameId::UtilityActionSecondary, &nodes::UtilityActionSecondary);
+        registry.Add(FrameId::UtilityActionFallback, &nodes::UtilityActionFallback);
         registry.Add(FrameId::RootActImmediateDeferred, &nodes::RootActImmediateDeferred);
         registry.Add(FrameId::RootActOrderedDeferred, &nodes::RootActOrderedDeferred);
         registry.Add(FrameId::RootActParentPushChild, &nodes::RootActParentPushChild);

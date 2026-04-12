@@ -115,8 +115,8 @@ Using a raw integer resume pc is also valid when explicit at the call site.
 Canonical usage:
 
 ```cpp
-ctx.Bb().Set(Keys::Alerted, true);
-if (ctx.Bb().GetOr(Keys::Alerted, false)) {
+ctx.Bb().Set(Keys::HighSignal, true);
+if (ctx.Bb().GetOr(Keys::HighSignal, false)) {
     return Dg::Complete();
 }
 ```
@@ -202,7 +202,7 @@ Author expectations:
 
 - reads from `FrameCtx` (usually blackboard, sometimes mailbox-derived state).
 - returns a score in `[0, 1]`.
-- can be any plain function of that shape; `When::Alerted`, `When::LowAmmo`, and `When::Always` are built-in examples, not special language features.
+- can be any plain function of that shape; `When::HighSignal`, `When::ResourcePressure`, and `When::Always` are built-in examples, not special language features.
 - consideration signatures are `const FrameCtx&`, so they are read-only by design.
 - in that context `ctx.Bb()` is const access; mutating calls like `ctx.Bb().Set(...)` are compile-time misuse, not a supported pattern.
 - keep consideration logic pure/read-only and perform mutations in frame body code that receives non-const `FrameCtx&`.
@@ -219,9 +219,9 @@ Utility score range warning:
 return Dg::Decide(
     ctx,
     {
-        Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-        Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
-        Dg::when(FrameId::UtilityActionPatrol, When::Always)
+        Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+        Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
+        Dg::when(FrameId::UtilityActionFallback, When::Always)
     },
     Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
 ```
@@ -409,8 +409,8 @@ Real implementation excerpt (condensed):
 {
     switch (ctx.Pc()) {
     case 0:
-        ctx.Bb().Set(Keys::AlertScore, 10);
-        ctx.Bb().Set(Keys::LowAmmoScore, 80);
+        ctx.Bb().Set(Keys::HighSignalScore, 10);
+        ctx.Bb().Set(Keys::ResourcePressureScore, 80);
         ctx.Bb().Set(Keys::UtilityDecisionsMade, 0);
         return Dg::Continue(1);
     case 1:
@@ -421,9 +421,9 @@ Real implementation excerpt (condensed):
         return Dg::Decide(
             ctx,
             {
-                Dg::when(FrameId::UtilityActionCombat, When::Alerted),
-                Dg::when(FrameId::UtilityActionReload, When::LowAmmo),
-                Dg::when(FrameId::UtilityActionPatrol, When::Always)
+                Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
+                Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
+                Dg::when(FrameId::UtilityActionFallback, When::Always)
             },
             Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
     default:
@@ -431,7 +431,7 @@ Real implementation excerpt (condensed):
     }
 }
 
-[[nodiscard]] FrameControl UtilityActionReload(FrameCtx& ctx)
+[[nodiscard]] FrameControl UtilityActionSecondary(FrameCtx& ctx)
 {
     switch (ctx.Pc()) {
     case 0:

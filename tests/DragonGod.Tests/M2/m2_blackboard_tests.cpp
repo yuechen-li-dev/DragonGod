@@ -8,8 +8,8 @@ namespace
 {
     namespace Keys
     {
-        constexpr dragongod::BbKey<bool> Alerted{ .name = "Alerted", .slot = 1 };
-        constexpr dragongod::BbKey<bool> ChildSawAlerted{ .name = "ChildSawAlerted", .slot = 2 };
+        constexpr dragongod::BbKey<bool> HighSignal{ .name = "HighSignal", .slot = 1 };
+        constexpr dragongod::BbKey<bool> ChildSawHighSignal{ .name = "ChildSawHighSignal", .slot = 2 };
         constexpr dragongod::BbKey<int> Counter{ .name = "Counter", .slot = 3 };
     }
 
@@ -263,7 +263,7 @@ FACT(M2b_Blackboard_SetMarksKeyDirty_WithinCurrentTickBoundary)
 
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "set/read scenario should complete");
     ASSERT_EQUAL(static_cast<std::size_t>(2), run.dirtySlotsByTick.size(), "scenario should record dirty slots for both executed ticks");
-    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::Alerted.slot), "tick 0 should mark Alerted dirty after Set");
+    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::HighSignal.slot), "tick 0 should mark HighSignal dirty after Set");
 }
 
 FACT(M2b_Blackboard_UnwrittenKeysStayClean)
@@ -273,7 +273,7 @@ FACT(M2b_Blackboard_UnwrittenKeysStayClean)
 
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "set/read scenario should complete");
     ASSERT_FALSE(ContainsSlot(run.dirtySlotsByTick[0], Keys::Counter.slot), "Counter should stay clean when not written");
-    ASSERT_FALSE(ContainsSlot(run.dirtySlotsByTick[0], Keys::ChildSawAlerted.slot), "ChildSawAlerted should stay clean when not written");
+    ASSERT_FALSE(ContainsSlot(run.dirtySlotsByTick[0], Keys::ChildSawHighSignal.slot), "ChildSawHighSignal should stay clean when not written");
 }
 
 FACT(M2b_Blackboard_DirtyStateClearsAtStartOfEachTick)
@@ -282,8 +282,8 @@ FACT(M2b_Blackboard_DirtyStateClearsAtStartOfEachTick)
     const dragongod::FrameRunResult run = runtime.RunForTicks(dragongod::StackScriptScenario::BlackboardSetReadComplete, 4);
 
     ASSERT_EQUAL(static_cast<std::size_t>(2), run.dirtySlotsByTick.size(), "scenario should produce two executed ticks");
-    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::Alerted.slot), "first tick writes Alerted");
-    ASSERT_FALSE(ContainsSlot(run.dirtySlotsByTick[1], Keys::Alerted.slot), "second tick reads only, so dirty should be cleared at tick start");
+    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::HighSignal.slot), "first tick writes HighSignal");
+    ASSERT_FALSE(ContainsSlot(run.dirtySlotsByTick[1], Keys::HighSignal.slot), "second tick reads only, so dirty should be cleared at tick start");
 }
 
 FACT(M2b_Blackboard_DirtyObservations_AreDeterministicAcrossRuns)
@@ -305,20 +305,20 @@ FACT(M2b_Blackboard_ParentChildWrites_AppearInDirtyTracking)
 
     ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "parent-child scenario should complete");
     ASSERT_EQUAL(static_cast<std::size_t>(5), run.dirtySlotsByTick.size(), "parent-child scenario should execute five ticks");
-    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::Alerted.slot), "root tick should dirty Alerted");
+    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::HighSignal.slot), "root tick should dirty HighSignal");
     ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[0], Keys::Counter.slot), "root tick should dirty Counter");
-    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[1], Keys::ChildSawAlerted.slot), "child read/write tick should dirty ChildSawAlerted");
+    ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[1], Keys::ChildSawHighSignal.slot), "child read/write tick should dirty ChildSawHighSignal");
     ASSERT_TRUE(ContainsSlot(run.dirtySlotsByTick[3], Keys::Counter.slot), "child counter write tick should dirty Counter");
 }
 
 FACT(M2b_Blackboard_ValueReadsRemainCorrect_WithDirtyTrackingEnabled)
 {
     dragongod::Blackboard blackboard;
-    blackboard.Set(Keys::Alerted, true);
+    blackboard.Set(Keys::HighSignal, true);
     blackboard.Set(Keys::Counter, 7);
 
-    ASSERT_TRUE(blackboard.GetOr(Keys::Alerted, false), "dirty tracking must not alter bool storage/read semantics");
+    ASSERT_TRUE(blackboard.GetOr(Keys::HighSignal, false), "dirty tracking must not alter bool storage/read semantics");
     ASSERT_EQUAL(7, blackboard.GetOr(Keys::Counter, 0), "dirty tracking must not alter int storage/read semantics");
-    ASSERT_TRUE(blackboard.IsDirty(Keys::Alerted), "Set should mark key dirty in direct blackboard usage");
+    ASSERT_TRUE(blackboard.IsDirty(Keys::HighSignal), "Set should mark key dirty in direct blackboard usage");
     ASSERT_TRUE(blackboard.IsDirty(Keys::Counter), "Set should mark key dirty in direct blackboard usage");
 }
