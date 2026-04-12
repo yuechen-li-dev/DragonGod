@@ -90,3 +90,57 @@ FACT(M12b_Runtime_Replay_IsDeterministic)
     ASSERT_TRUE(runA.trace == runB.trace, "replays should produce identical router trace");
     ASSERT_TRUE(runA.finalState == runB.finalState, "replays should produce identical final state");
 }
+
+FACT(M12f_Runtime_BackoffRetry_SpacesDeferredAttempts)
+{
+    RouterState state = BuildStateForRuntime();
+    state.retryHeuristic = RouterState::RetryHeuristic::BackoffDelay;
+    state.retryDelayTicks = 1;
+    state.maxBackoffDelayTicks = 3;
+    state.ports[2].queueFull = true;
+
+    const Packet packet{ .packetId = 500, .destinationId = 11, .ingressPort = 8, .priority = 0, .sizeBytes = 64 };
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packet });
+    const RouterRunOutput blockedRetryA = RunRouterGoldenPath(queuedRun.finalState, {});
+    const RouterRunOutput blockedRetryB = RunRouterGoldenPath(blockedRetryA.finalState, {});
+
+    ASSERT_EQUAL(1, blockedRetryA.finalState.retryAttempts, "first blocked retry pass should include exactly one additional retry attempt");
+    ASSERT_EQUAL(2, blockedRetryB.finalState.retryAttempts, "backoff should defer another retry attempt in the next blocked pass");
+    ASSERT_EQUAL(7, blockedRetryB.finalState.queuedPackets[0].nextRetryTick, "backoff retry should schedule the next attempt farther out");
+}
+
+FACT(M12f_Runtime_ConditionAwareRetry_SkipsDoomedRetryPass)
+{
+    RouterState state = BuildStateForRuntime();
+    state.retryHeuristic = RouterState::RetryHeuristic::ConditionAware;
+    state.retryConditionMaxCongestion = 70;
+    state.ports[2].queueFull = true;
+
+    const Packet packet{ .packetId = 510, .destinationId = 11, .ingressPort = 8, .priority = 0, .sizeBytes = 64 };
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packet });
+    const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(queuedRun.finalState, {});
+
+    ASSERT_EQUAL(0, blockedRetryRun.finalState.retryAttempts, "condition-aware mode should avoid retrying while no recovery signal exists");
+    ASSERT_EQUAL(2, blockedRetryRun.finalState.retrySkippedCount, "condition-aware mode should count each skipped retry pass");
+    ASSERT_EQUAL(1, static_cast<int>(blockedRetryRun.finalState.queuedPackets.size()), "packet should remain queued while path is still blocked");
+}
+
+FACT(M12f_Runtime_ConditionAwareRetry_DrainsAfterRecoverySignal)
+{
+    RouterState state = BuildStateForRuntime();
+    state.retryHeuristic = RouterState::RetryHeuristic::ConditionAware;
+    state.retryConditionMaxCongestion = 70;
+    state.ports[2].queueFull = true;
+
+    const Packet packet{ .packetId = 520, .destinationId = 11, .ingressPort = 8, .priority = 0, .sizeBytes = 64 };
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packet });
+    const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(queuedRun.finalState, {});
+
+    RouterState recovered = blockedRetryRun.finalState;
+    recovered.ports[2].queueFull = false;
+
+    const RouterRunOutput drainRun = RunRouterGoldenPath(recovered, {});
+
+    ASSERT_EQUAL(0, static_cast<int>(drainRun.finalState.queuedPackets.size()), "queue should drain once condition-aware recovery signal appears");
+    ASSERT_EQUAL(1, drainRun.finalState.drainedCount, "recovered retry should still forward through deferred drain");
+}

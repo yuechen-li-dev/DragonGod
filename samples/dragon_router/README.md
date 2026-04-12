@@ -6,7 +6,7 @@ It is **not** a full router implementation.
 
 Its purpose is to pressure-test whether the blanket assumption "router logic must inherently belong to ASIC-only architecture" is too coarse for DragonGod-oriented deterministic control loops.
 
-## M12e scaling benchmark lane + M12b behavior
+## M12f queue/retry heuristic lane + M12b behavior
 
 The sample now implements a deterministic packet control loop with explicit frame-shaped steps:
 
@@ -18,6 +18,12 @@ The sample now implements a deterministic packet control loop with explicit fram
 6. **Queue** when all candidates are unavailable
 7. **Deferred retry/drain** for queued packets using deterministic tick-based retry timing
 
+M12f keeps this same bounded runtime shape and adds three explicit retry heuristics for queued recovery:
+
+- `BaselineFixedDelay`: constant retry cadence
+- `BackoffDelay`: bounded retry spacing after repeated failures
+- `ConditionAware`: skip retry passes while no healthy/usable recovery signal exists
+
 The sample state is intentionally bounded and explicit:
 
 - packet model (`Packet`)
@@ -26,14 +32,16 @@ The sample state is intentionally bounded and explicit:
 - queued packet metadata (`QueueEntry`) with retry timing and retry count
 - deterministic actuation (`Actuation`) including queue/retry/drain outcomes
 - forwarding/drop/queue/drain counters (`RouterState`)
+- retry-effort counters (`retryAttempts`, `retrySkippedCount`) for interpreting heavy recovery cost
 
 
 ## Sample-local benchmarks
 
-M12e extends the bounded benchmark lane with deterministic scaling dimensions:
+M12f keeps the bounded candidate-scaling lane and adds a heavy recovery comparison across retry heuristics:
 
 - candidate-count scaling for utility path selection (`1`, `2`, `4`, `8` candidates)
-- queue/retry pressure scaling (`light` and `heavy` blocked-then-recovered cases)
+- queue/retry pressure scaling (`light` blocked-then-recovered case)
+- queue/retry heuristic variants on the heavy blocked-then-recovered case (baseline, backoff, condition-aware)
 
 Each benchmark still exercises `RunRouterGoldenPath` and the real route decision + utility + queue/retry/drain logic.
 
@@ -46,12 +54,14 @@ Each benchmark still exercises `RunRouterGoldenPath` and the real route decision
   - stresses deterministic utility path-selection overhead as candidate set size grows
 - `DragonRouter_QueueRetryLightBench`
   - stresses queue + one recovery drain pass
-- `DragonRouter_QueueRetryHeavyBench`
-  - stresses heavier queued backlog with blocked retry pass before recovery
+- `DragonRouter_QueueRetryBaselineBench`
+- `DragonRouter_QueueRetryBackoffBench`
+- `DragonRouter_QueueRetryConditionAwareBench`
+  - stress the same heavy queued backlog shape with different deterministic retry heuristics
 
 These are timing measurements only; they do not replace semantic correctness tests.
 
-## Benchmark report artifact (M12e)
+## Benchmark report artifact (M12f)
 
 - Benchmark report: [`report.md`](./report.md)
 - Raw benchmark capture: [`bench-results.txt`](./bench-results.txt)
