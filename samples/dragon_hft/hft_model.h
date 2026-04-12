@@ -1,30 +1,77 @@
 #pragma once
 
-#include "../../src/DragonGod/runtime.h"
-
-#include <cstddef>
+#include <string>
+#include <vector>
 
 namespace dragongod_samples::dragon_hft
 {
-    struct MarketReactionState
+    enum class OrderSide
     {
-        bool hasStaleSignal = false;
-        int outstandingOrderCount = 0;
-        int reactionFrames = 0;
-
-        [[nodiscard]] bool operator==(const MarketReactionState& other) const = default;
+        None,
+        Buy,
+        Sell
     };
 
-    struct HftScaffoldSmokeOutput
+    enum class DecisionKind
     {
-        MarketReactionState state{};
-        dragongod::StackRunOutcome runtimeOutcome = dragongod::StackRunOutcome::Continue;
-        std::size_t runtimeTraceCount = 0;
-
-        [[nodiscard]] bool operator==(const HftScaffoldSmokeOutput& other) const = default;
+        Hold,
+        SubmitBuy,
+        SubmitSell
     };
 
-    [[nodiscard]] MarketReactionState BuildInitialHftState();
-    void AdvanceHftScaffoldNodes(MarketReactionState& state);
-    [[nodiscard]] HftScaffoldSmokeOutput RunHftScaffoldSmoke();
+    struct MarketEvent
+    {
+        int bestBid = 0;
+        int bestAsk = 0;
+        int signal = 0;
+
+        [[nodiscard]] bool operator==(const MarketEvent& other) const = default;
+    };
+
+    struct HftState
+    {
+        int threshold = 5;
+        int latestSignal = 0;
+        OrderSide outstandingOrder = OrderSide::None;
+        int submitCount = 0;
+        int holdCount = 0;
+
+        [[nodiscard]] bool operator==(const HftState& other) const = default;
+    };
+
+    struct HftActuation
+    {
+        DecisionKind kind = DecisionKind::Hold;
+        int price = 0;
+        std::string reason;
+
+        [[nodiscard]] bool operator==(const HftActuation& other) const = default;
+    };
+
+    struct EventOutcome
+    {
+        DecisionKind decision = DecisionKind::Hold;
+        OrderSide outstandingAfter = OrderSide::None;
+        bool blockedDuplicate = false;
+        std::string reason;
+
+        [[nodiscard]] bool operator==(const EventOutcome& other) const = default;
+    };
+
+    struct HftRunOutput
+    {
+        HftState finalState{};
+        std::vector<HftActuation> actuation;
+        std::vector<EventOutcome> outcomes;
+        std::vector<std::string> trace;
+
+        [[nodiscard]] bool operator==(const HftRunOutput& other) const = default;
+    };
+
+    [[nodiscard]] bool IsActionableSignal(int signal, int threshold);
+    [[nodiscard]] OrderSide DesiredOrderSide(int signal, int threshold);
+    [[nodiscard]] bool ShouldSubmitOrder(OrderSide desiredSide, OrderSide outstandingOrder);
+    [[nodiscard]] int PriceForOrder(const MarketEvent& event, OrderSide side);
+
+    [[nodiscard]] HftRunOutput RunHftGoldenPath(const HftState& initialState, const std::vector<MarketEvent>& mailboxEvents);
 }
