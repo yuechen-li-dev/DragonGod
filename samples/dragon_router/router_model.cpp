@@ -126,6 +126,55 @@ namespace dragongod_samples::dragon_router
         return selectedPort;
     }
 
+    [[nodiscard]] int SelectPreferredQueuedPort(const RouterState& state, const int destinationId)
+    {
+        const std::vector<RouteEntry> candidates = FindCandidateRoutes(state, destinationId);
+
+        int selectedPort = -1;
+        int selectedScore = -10000;
+
+        for (const RouteEntry& route : candidates) {
+            const PortState* port = FindPort(state, route.egressPort);
+            if (port == nullptr) {
+                continue;
+            }
+
+            int score = 100 - port->congestionScore;
+            if (!port->linkUp) {
+                score -= 1000;
+            }
+            if (port->queueFull) {
+                score -= 200;
+            }
+
+            if (score > selectedScore ||
+                (score == selectedScore && (selectedPort == -1 || route.egressPort < selectedPort))) {
+                selectedScore = score;
+                selectedPort = route.egressPort;
+            }
+        }
+
+        return selectedPort;
+    }
+
+    [[nodiscard]] bool IsRoutePortUsable(const RouterState& state, const int destinationId, const int portId)
+    {
+        for (const RouteEntry& route : state.routes) {
+            if (route.destinationId != destinationId || route.egressPort != portId || !route.healthy) {
+                continue;
+            }
+
+            const PortState* port = FindPort(state, portId);
+            if (port == nullptr) {
+                return false;
+            }
+
+            return IsPortUsable(*port);
+        }
+
+        return false;
+    }
+
     void DrainQueuedPackets(
         RouterState& state,
         std::vector<Actuation>& actuation,
@@ -157,19 +206,44 @@ namespace dragongod_samples::dragon_router
                 continue;
             }
 
-            const int selectedPort = SelectBestEgressPort(state, queued.packet.destinationId);
+            int selectedPort = -1;
+            if (state.drainPolicy == RouterState::DrainPolicy::PreferOriginalPath) {
+                if (queued.preferredPortId >= 0 &&
+                    IsRoutePortUsable(state, queued.packet.destinationId, queued.preferredPortId)) {
+                    selectedPort = queued.preferredPortId;
+                }
+            }
+            else {
+                if (queued.preferredPortId >= 0 &&
+                    IsRoutePortUsable(state, queued.packet.destinationId, queued.preferredPortId)) {
+                    selectedPort = queued.preferredPortId;
+                }
+                else {
+                    selectedPort = SelectBestEgressPort(state, queued.packet.destinationId);
+                }
+            }
+
             if (selectedPort >= 0) {
                 state.forwardedCount += 1;
                 state.drainedCount += 1;
+                if (queued.preferredPortId == selectedPort) {
+                    state.drainedPreferredPathCount += 1;
+                }
+                else {
+                    state.drainedAlternatePathCount += 1;
+                }
                 actuation.push_back(Actuation{
                     .kind = ActuationKind::DrainForwarded,
                     .packetId = queued.packet.packetId,
                     .portId = selectedPort,
-                    .reason = "DeferredRetryForwarded"
+                    .reason = queued.preferredPortId == selectedPort
+                        ? "DeferredRetryForwardedPreferredPath"
+                        : "DeferredRetryForwardedAlternatePath"
                 });
                 trace.push_back(
                     "Drain packet=" + std::to_string(queued.packet.packetId) +
-                    " action=forward port=" + std::to_string(selectedPort));
+                    " action=forward port=" + std::to_string(selectedPort) +
+                    " path=" + (queued.preferredPortId == selectedPort ? "preferred" : "alternate"));
                 state.queuedPackets.erase(state.queuedPackets.begin() + static_cast<std::ptrdiff_t>(index));
                 continue;
             }

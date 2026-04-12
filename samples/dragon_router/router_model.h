@@ -38,6 +38,7 @@ namespace dragongod_samples::dragon_router
     struct QueueEntry
     {
         Packet packet{};
+        int preferredPortId = -1;
         int retryCount = 0;
         int nextRetryTick = 0;
 
@@ -53,6 +54,12 @@ namespace dragongod_samples::dragon_router
             ConditionAware
         };
 
+        enum class DrainPolicy
+        {
+            PreferOriginalPath,
+            AllowAlternatePath
+        };
+
         std::vector<RouteEntry> routes;
         std::vector<PortState> ports;
         std::vector<QueueEntry> queuedPackets;
@@ -62,11 +69,14 @@ namespace dragongod_samples::dragon_router
         int drainedCount = 0;
         int retryAttempts = 0;
         int retrySkippedCount = 0;
+        int drainedPreferredPathCount = 0;
+        int drainedAlternatePathCount = 0;
         int currentTick = 0;
         int retryDelayTicks = 1;
         int maxBackoffDelayTicks = 3;
         int retryConditionMaxCongestion = 70;
         RetryHeuristic retryHeuristic = RetryHeuristic::BaselineFixedDelay;
+        DrainPolicy drainPolicy = DrainPolicy::PreferOriginalPath;
 
         [[nodiscard]] bool operator==(const RouterState& other) const = default;
     };
@@ -123,6 +133,7 @@ namespace dragongod_samples::dragon_router
     [[nodiscard]] bool IsPortUsable(const PortState& port);
     [[nodiscard]] int PortUtilityScore(const PortState& port);
     [[nodiscard]] int SelectBestEgressPort(const RouterState& state, int destinationId);
+    [[nodiscard]] int SelectPreferredQueuedPort(const RouterState& state, int destinationId);
 
     [[nodiscard]] RouterRunOutput RunRouterGoldenPath(
         const RouterState& initialState,

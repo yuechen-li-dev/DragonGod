@@ -51,6 +51,16 @@ namespace
         return state;
     }
 
+    [[nodiscard]] RouterState BuildAlternateDrainQueueState()
+    {
+        RouterState state{};
+        state.routes.push_back(RouteEntry{ .destinationId = 12, .egressPort = 3, .healthy = true });
+        state.routes.push_back(RouteEntry{ .destinationId = 12, .egressPort = 4, .healthy = true });
+        state.ports.push_back(PortState{ .portId = 3, .linkUp = true, .queueFull = true, .congestionScore = 5 });
+        state.ports.push_back(PortState{ .portId = 4, .linkUp = true, .queueFull = true, .congestionScore = 40 });
+        return state;
+    }
+
     [[nodiscard]] Packet BuildPacket(const int destinationId, const std::uint64_t iteration)
     {
         return Packet{
@@ -96,6 +106,38 @@ namespace
         ConsumeResult(queuedRun);
         ConsumeResult(blockedRetryRun);
         ConsumeResult(recoveredDrainRun);
+    }
+
+    void RunHeavyAlternateDrainScenario(
+        RouterState::RetryHeuristic heuristic,
+        RouterState::DrainPolicy drainPolicy,
+        const std::uint64_t iteration)
+    {
+        RouterState state = BuildAlternateDrainQueueState();
+        state.retryHeuristic = heuristic;
+        state.drainPolicy = drainPolicy;
+
+        const Packet packetA = BuildPacket(12, iteration * 3);
+        const Packet packetB = BuildPacket(12, iteration * 3 + 1);
+        const Packet packetC = BuildPacket(12, iteration * 3 + 2);
+
+        const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packetA, packetB, packetC });
+
+        RouterState blockedRetryState = queuedRun.finalState;
+        const RouterRunOutput blockedRetryRun = RunRouterGoldenPath(blockedRetryState, {});
+
+        RouterState alternateRecoveredState = blockedRetryRun.finalState;
+        alternateRecoveredState.ports[1].queueFull = false;
+        const RouterRunOutput alternateRecoverRun = RunRouterGoldenPath(alternateRecoveredState, {});
+
+        RouterState preferredRecoveredState = alternateRecoverRun.finalState;
+        preferredRecoveredState.ports[0].queueFull = false;
+        const RouterRunOutput preferredRecoverRun = RunRouterGoldenPath(preferredRecoveredState, {});
+
+        ConsumeResult(queuedRun);
+        ConsumeResult(blockedRetryRun);
+        ConsumeResult(alternateRecoverRun);
+        ConsumeResult(preferredRecoverRun);
     }
 }
 
@@ -151,15 +193,37 @@ BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryLightBench, 5000)
 
 BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryBaselineBench, 3000)
 {
-    RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::BaselineFixedDelay, context.iteration);
+    RunHeavyAlternateDrainScenario(
+        RouterState::RetryHeuristic::BaselineFixedDelay,
+        RouterState::DrainPolicy::PreferOriginalPath,
+        context.iteration);
 }
 
 BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryBackoffBench, 3000)
 {
-    RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::BackoffDelay, context.iteration);
+    RunHeavyAlternateDrainScenario(
+        RouterState::RetryHeuristic::BackoffDelay,
+        RouterState::DrainPolicy::PreferOriginalPath,
+        context.iteration);
 }
 
 BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryConditionAwareBench, 3000)
 {
     RunHeavyQueueRetryScenario(RouterState::RetryHeuristic::ConditionAware, context.iteration);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryAlternateDrainBench, 3000)
+{
+    RunHeavyAlternateDrainScenario(
+        RouterState::RetryHeuristic::BaselineFixedDelay,
+        RouterState::DrainPolicy::AllowAlternatePath,
+        context.iteration);
+}
+
+BENCHMARK_WITH_ITERATIONS(DragonRouter_QueueRetryBackoffAlternateDrainBench, 3000)
+{
+    RunHeavyAlternateDrainScenario(
+        RouterState::RetryHeuristic::BackoffDelay,
+        RouterState::DrainPolicy::AllowAlternatePath,
+        context.iteration);
 }

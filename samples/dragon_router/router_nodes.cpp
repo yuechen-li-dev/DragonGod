@@ -86,8 +86,10 @@ namespace dragongod_samples::dragon_router
     [[nodiscard]] RouterControl QueueFrame(RouterFrameCtx& ctx)
     {
         ctx.Bb().queuedCount += 1;
+        const int preferredPort = SelectPreferredQueuedPort(ctx.Bb(), ctx.packet.destinationId);
         ctx.Bb().queuedPackets.push_back(QueueEntry{
             .packet = ctx.packet,
+            .preferredPortId = preferredPort,
             .retryCount = 0,
             .nextRetryTick = ctx.Bb().currentTick + ctx.Bb().retryDelayTicks
         });

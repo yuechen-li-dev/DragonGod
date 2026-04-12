@@ -144,3 +144,48 @@ FACT(M12f_Runtime_ConditionAwareRetry_DrainsAfterRecoverySignal)
     ASSERT_EQUAL(0, static_cast<int>(drainRun.finalState.queuedPackets.size()), "queue should drain once condition-aware recovery signal appears");
     ASSERT_EQUAL(1, drainRun.finalState.drainedCount, "recovered retry should still forward through deferred drain");
 }
+
+FACT(M12g_Runtime_PreferOriginalDrain_WaitsWhenOnlyAlternateRecovers)
+{
+    RouterState state{};
+    state.retryHeuristic = RouterState::RetryHeuristic::BaselineFixedDelay;
+    state.drainPolicy = RouterState::DrainPolicy::PreferOriginalPath;
+    state.routes.push_back(RouteEntry{ .destinationId = 70, .egressPort = 4, .healthy = true });
+    state.routes.push_back(RouteEntry{ .destinationId = 70, .egressPort = 5, .healthy = true });
+    state.ports.push_back(PortState{ .portId = 4, .linkUp = true, .queueFull = true, .congestionScore = 5 });
+    state.ports.push_back(PortState{ .portId = 5, .linkUp = true, .queueFull = true, .congestionScore = 45 });
+
+    const Packet packet{ .packetId = 600, .destinationId = 70, .ingressPort = 8, .priority = 0, .sizeBytes = 64 };
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packet });
+
+    RouterState alternateOnlyRecovered = queuedRun.finalState;
+    alternateOnlyRecovered.ports[1].queueFull = false;
+    const RouterRunOutput retryRun = RunRouterGoldenPath(alternateOnlyRecovered, {});
+
+    ASSERT_EQUAL(1, static_cast<int>(retryRun.finalState.queuedPackets.size()), "prefer-original mode should keep queue while preferred path is still blocked");
+    ASSERT_EQUAL(2, retryRun.finalState.retryAttempts, "prefer-original mode should retry and defer while waiting");
+    ASSERT_EQUAL(0, retryRun.finalState.drainedAlternatePathCount, "prefer-original mode should not consume alternate drain");
+}
+
+FACT(M12g_Runtime_AlternateDrain_UsesViableAlternateBeforePreferredRecovers)
+{
+    RouterState state{};
+    state.retryHeuristic = RouterState::RetryHeuristic::BaselineFixedDelay;
+    state.drainPolicy = RouterState::DrainPolicy::AllowAlternatePath;
+    state.routes.push_back(RouteEntry{ .destinationId = 71, .egressPort = 4, .healthy = true });
+    state.routes.push_back(RouteEntry{ .destinationId = 71, .egressPort = 5, .healthy = true });
+    state.ports.push_back(PortState{ .portId = 4, .linkUp = true, .queueFull = true, .congestionScore = 5 });
+    state.ports.push_back(PortState{ .portId = 5, .linkUp = true, .queueFull = true, .congestionScore = 45 });
+
+    const Packet packet{ .packetId = 610, .destinationId = 71, .ingressPort = 8, .priority = 0, .sizeBytes = 64 };
+    const RouterRunOutput queuedRun = RunRouterGoldenPath(state, { packet });
+
+    RouterState alternateOnlyRecovered = queuedRun.finalState;
+    alternateOnlyRecovered.ports[1].queueFull = false;
+    const RouterRunOutput retryRun = RunRouterGoldenPath(alternateOnlyRecovered, {});
+
+    ASSERT_EQUAL(0, static_cast<int>(retryRun.finalState.queuedPackets.size()), "alternate-drain mode should drain when an alternate becomes usable");
+    ASSERT_EQUAL(1, retryRun.finalState.drainedAlternatePathCount, "alternate-drain mode should track alternate-path drains");
+    ASSERT_EQUAL(0, retryRun.finalState.drainedPreferredPathCount, "alternate-drain mode should not claim preferred-path drains");
+    ASSERT_EQUAL(5, retryRun.actuation[0].portId, "alternate-drain mode should forward through recovered alternate path");
+}

@@ -6,7 +6,7 @@ It is **not** a full router implementation.
 
 Its purpose is to pressure-test whether the blanket assumption "router logic must inherently belong to ASIC-only architecture" is too coarse for DragonGod-oriented deterministic control loops.
 
-## M12f queue/retry heuristic lane + M12b behavior
+## M12g alternate-path drain lane + M12b behavior
 
 The sample now implements a deterministic packet control loop with explicit frame-shaped steps:
 
@@ -18,11 +18,13 @@ The sample now implements a deterministic packet control loop with explicit fram
 6. **Queue** when all candidates are unavailable
 7. **Deferred retry/drain** for queued packets using deterministic tick-based retry timing
 
-M12f keeps this same bounded runtime shape and adds three explicit retry heuristics for queued recovery:
+M12f/M12g keep this same bounded runtime shape and now expose explicit queue-recovery controls:
 
 - `BaselineFixedDelay`: constant retry cadence
 - `BackoffDelay`: bounded retry spacing after repeated failures
 - `ConditionAware`: skip retry passes while no healthy/usable recovery signal exists
+- `PreferOriginalPath` drain policy: queued packets wait for the preferred path chosen at queue-time
+- `AllowAlternatePath` drain policy: when retry is eligible, queued packets can drain via a currently viable alternate path
 
 The sample state is intentionally bounded and explicit:
 
@@ -33,15 +35,17 @@ The sample state is intentionally bounded and explicit:
 - deterministic actuation (`Actuation`) including queue/retry/drain outcomes
 - forwarding/drop/queue/drain counters (`RouterState`)
 - retry-effort counters (`retryAttempts`, `retrySkippedCount`) for interpreting heavy recovery cost
+- drain-path counters (`drainedPreferredPathCount`, `drainedAlternatePathCount`) for interpreting recovery behavior shifts
 
 
 ## Sample-local benchmarks
 
-M12f keeps the bounded candidate-scaling lane and adds a heavy recovery comparison across retry heuristics:
+M12g keeps the bounded candidate-scaling lane and extends heavy recovery comparison with alternate-path drain:
 
 - candidate-count scaling for utility path selection (`1`, `2`, `4`, `8` candidates)
 - queue/retry pressure scaling (`light` blocked-then-recovered case)
 - queue/retry heuristic variants on the heavy blocked-then-recovered case (baseline, backoff, condition-aware)
+- alternate-path drain variants on the heavy blocked -> alternate-recovers -> preferred-recovers case
 
 Each benchmark still exercises `RunRouterGoldenPath` and the real route decision + utility + queue/retry/drain logic.
 
@@ -57,11 +61,14 @@ Each benchmark still exercises `RunRouterGoldenPath` and the real route decision
 - `DragonRouter_QueueRetryBaselineBench`
 - `DragonRouter_QueueRetryBackoffBench`
 - `DragonRouter_QueueRetryConditionAwareBench`
+- `DragonRouter_QueueRetryAlternateDrainBench`
+- `DragonRouter_QueueRetryBackoffAlternateDrainBench`
   - stress the same heavy queued backlog shape with different deterministic retry heuristics
+  - compare waiting for preferred-path drain vs opportunistic alternate-path drain when only the alternate recovers first
 
 These are timing measurements only; they do not replace semantic correctness tests.
 
-## Benchmark report artifact (M12f)
+## Benchmark report artifact (M12g)
 
 - Benchmark report: [`report.md`](./report.md)
 - Raw benchmark capture: [`bench-results.txt`](./bench-results.txt)
