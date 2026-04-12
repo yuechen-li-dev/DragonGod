@@ -84,6 +84,8 @@ M12b tests are kept with the sample and use `*_tests*` filenames:
 Compile and run from repository root:
 
 ```bash
+mkdir -p out
+
 g++ -std=c++23 -Wall -Wextra -pedantic \
   tests/Marionette/test_harness.cpp \
   tests/Marionette/test_doom.cpp \

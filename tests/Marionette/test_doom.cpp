@@ -120,7 +120,8 @@ namespace marionette::tests
 
         DoomExecutionContext context{
             .artifactDirectory = artifactDirectory,
-            .breadcrumbPath = artifactDirectory / "doom-breadcrumb.txt"
+            .breadcrumbPath = artifactDirectory / "doom-breadcrumb.txt",
+            .foretelling = {}
         };
 
         std::ofstream breadcrumb(context.breadcrumbPath, std::ios::binary | std::ios::trunc);
