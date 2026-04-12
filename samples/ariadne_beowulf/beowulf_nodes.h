@@ -1,16 +1,29 @@
 #pragma once
 
-#include "../../src/DragonGod/runtime.h"
+#include "beowulf_model.h"
+
+#include <string>
+#include <vector>
 
 namespace dragongod_samples::ariadne_beowulf
 {
-    struct BeowulfScaffoldSmoke
+    struct BeowulfRunRequest
     {
-        dragongod::StackRunOutcome outcome = dragongod::StackRunOutcome::Continue;
-        dragongod::TickIndex ticksRan = 0;
+        std::vector<dragongod::Message> mailboxInput;
+        int maxSteps = 8;
 
-        [[nodiscard]] bool operator==(const BeowulfScaffoldSmoke& other) const = default;
+        [[nodiscard]] bool operator==(const BeowulfRunRequest& other) const = default;
     };
 
-    [[nodiscard]] BeowulfScaffoldSmoke RunBeowulfScaffoldSmokePath();
+    struct BeowulfRunResult
+    {
+        BeowulfState finalState{};
+        BeowulfOutput output{};
+        bool failed = false;
+        std::string failureReason;
+
+        [[nodiscard]] bool operator==(const BeowulfRunResult& other) const = default;
+    };
+
+    [[nodiscard]] BeowulfRunResult RunBeowulfGoldenPath(const BeowulfRunRequest& request);
 }
