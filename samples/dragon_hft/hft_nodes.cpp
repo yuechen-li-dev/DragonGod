@@ -5,6 +5,8 @@ namespace dragongod_samples::dragon_hft
     enum class HftPhase
     {
         IngestMarketEvent,
+        StaleCheck,
+        CancelStaleOrder,
         Decision,
         PlaceBuy,
         PlaceSell,
@@ -17,6 +19,7 @@ namespace dragongod_samples::dragon_hft
         MarketEvent event{};
         OrderSide desiredSide = OrderSide::None;
         bool blockedDuplicate = false;
+        bool canceledStale = false;
         std::string holdReason;
     };
 
@@ -35,8 +38,41 @@ namespace dragongod_samples::dragon_hft
     {
         ctx.scratch.event = ctx.mailboxEvent;
         ctx.Bb().latestSignal = ctx.scratch.event.signal;
-        ctx.trace.push_back("Ingest signal=" + std::to_string(ctx.scratch.event.signal));
+        AdvanceOutstandingAge(ctx.Bb());
+        ctx.trace.push_back(
+            "Ingest signal=" + std::to_string(ctx.scratch.event.signal) +
+            " outstandingAgeTicks=" + std::to_string(ctx.Bb().outstandingAgeTicks));
+        return HftPhase::StaleCheck;
+    }
+
+    [[nodiscard]] HftPhase StaleCheckFrame(FrameCtx& ctx)
+    {
+        if (ShouldCancelStaleOrder(ctx.Bb())) {
+            return HftPhase::CancelStaleOrder;
+        }
+
         return HftPhase::Decision;
+    }
+
+    [[nodiscard]] HftPhase CancelStaleOrderFrame(FrameCtx& ctx)
+    {
+        const OrderSide canceledSide = ctx.Bb().outstandingOrder;
+        ctx.Bb().outstandingOrder = OrderSide::None;
+        ctx.Bb().outstandingState = OutstandingState::None;
+        ctx.Bb().outstandingAgeTicks = 0;
+        ctx.Bb().cancelCount += 1;
+        ctx.scratch.canceledStale = true;
+
+        ctx.actuation.push_back(HftActuation{
+            .kind = DecisionKind::CancelOrder,
+            .price = 0,
+            .reason = "StaleOutstandingOrder"
+        });
+
+        ctx.trace.push_back(
+            "CancelStale side=" + std::to_string(static_cast<int>(canceledSide)) +
+            " signal=" + std::to_string(ctx.Bb().latestSignal));
+        return HftPhase::Completed;
     }
 
     [[nodiscard]] HftPhase DecisionFrame(FrameCtx& ctx)
@@ -50,9 +86,13 @@ namespace dragongod_samples::dragon_hft
             return HftPhase::Hold;
         }
 
-        if (!ShouldSubmitOrder(desiredSide, ctx.Bb().outstandingOrder)) {
-            ctx.scratch.blockedDuplicate = true;
-            ctx.scratch.holdReason = "DuplicateOutstandingOrderBlocked";
+        if (!ShouldSubmitOrder(desiredSide, ctx.Bb())) {
+            if (ctx.Bb().outstandingOrder == desiredSide) {
+                ctx.scratch.blockedDuplicate = true;
+                ctx.scratch.holdReason = "DuplicateOutstandingOrderBlocked";
+            } else {
+                ctx.scratch.holdReason = "SubmitBlocked";
+            }
             return HftPhase::Hold;
         }
 
@@ -66,6 +106,8 @@ namespace dragongod_samples::dragon_hft
     [[nodiscard]] HftPhase PlaceBuyFrame(FrameCtx& ctx)
     {
         ctx.Bb().outstandingOrder = OrderSide::Buy;
+        ctx.Bb().outstandingState = OutstandingState::Fresh;
+        ctx.Bb().outstandingAgeTicks = 0;
         ctx.Bb().submitCount += 1;
 
         ctx.actuation.push_back(HftActuation{
@@ -83,6 +125,8 @@ namespace dragongod_samples::dragon_hft
     [[nodiscard]] HftPhase PlaceSellFrame(FrameCtx& ctx)
     {
         ctx.Bb().outstandingOrder = OrderSide::Sell;
+        ctx.Bb().outstandingState = OutstandingState::Fresh;
+        ctx.Bb().outstandingAgeTicks = 0;
         ctx.Bb().submitCount += 1;
 
         ctx.actuation.push_back(HftActuation{
@@ -123,6 +167,12 @@ namespace dragongod_samples::dragon_hft
             case HftPhase::IngestMarketEvent:
                 phase = IngestMarketEventFrame(ctx);
                 break;
+            case HftPhase::StaleCheck:
+                phase = StaleCheckFrame(ctx);
+                break;
+            case HftPhase::CancelStaleOrder:
+                phase = CancelStaleOrderFrame(ctx);
+                break;
             case HftPhase::Decision:
                 phase = DecisionFrame(ctx);
                 break;
@@ -142,7 +192,15 @@ namespace dragongod_samples::dragon_hft
 
         EventOutcome outcome{};
         outcome.outstandingAfter = state.outstandingOrder;
+        outcome.outstandingStateAfter = state.outstandingState;
         outcome.blockedDuplicate = scratch.blockedDuplicate;
+        outcome.canceledStale = scratch.canceledStale;
+
+        if (scratch.canceledStale) {
+            outcome.decision = DecisionKind::CancelOrder;
+            outcome.reason = "CanceledStaleOutstandingOrder";
+            return outcome;
+        }
 
         if (scratch.desiredSide == OrderSide::Buy && !scratch.blockedDuplicate) {
             outcome.decision = DecisionKind::SubmitBuy;

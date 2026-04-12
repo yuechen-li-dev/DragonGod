@@ -16,7 +16,15 @@ namespace dragongod_samples::dragon_hft
     {
         Hold,
         SubmitBuy,
-        SubmitSell
+        SubmitSell,
+        CancelOrder
+    };
+
+    enum class OutstandingState
+    {
+        None,
+        Fresh,
+        Stale
     };
 
     struct MarketEvent
@@ -31,9 +39,13 @@ namespace dragongod_samples::dragon_hft
     struct HftState
     {
         int threshold = 5;
+        int staleTickThreshold = 2;
         int latestSignal = 0;
         OrderSide outstandingOrder = OrderSide::None;
+        OutstandingState outstandingState = OutstandingState::None;
+        int outstandingAgeTicks = 0;
         int submitCount = 0;
+        int cancelCount = 0;
         int holdCount = 0;
 
         [[nodiscard]] bool operator==(const HftState& other) const = default;
@@ -52,7 +64,9 @@ namespace dragongod_samples::dragon_hft
     {
         DecisionKind decision = DecisionKind::Hold;
         OrderSide outstandingAfter = OrderSide::None;
+        OutstandingState outstandingStateAfter = OutstandingState::None;
         bool blockedDuplicate = false;
+        bool canceledStale = false;
         std::string reason;
 
         [[nodiscard]] bool operator==(const EventOutcome& other) const = default;
@@ -70,7 +84,11 @@ namespace dragongod_samples::dragon_hft
 
     [[nodiscard]] bool IsActionableSignal(int signal, int threshold);
     [[nodiscard]] OrderSide DesiredOrderSide(int signal, int threshold);
-    [[nodiscard]] bool ShouldSubmitOrder(OrderSide desiredSide, OrderSide outstandingOrder);
+    [[nodiscard]] bool IsOutstandingActive(const HftState& state);
+    void AdvanceOutstandingAge(HftState& state);
+    [[nodiscard]] bool IsOutstandingStale(const HftState& state);
+    [[nodiscard]] bool ShouldCancelStaleOrder(const HftState& state);
+    [[nodiscard]] bool ShouldSubmitOrder(OrderSide desiredSide, const HftState& state);
     [[nodiscard]] int PriceForOrder(const MarketEvent& event, OrderSide side);
 
     [[nodiscard]] HftRunOutput RunHftGoldenPath(const HftState& initialState, const std::vector<MarketEvent>& mailboxEvents);
