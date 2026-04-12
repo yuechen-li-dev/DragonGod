@@ -18,6 +18,7 @@ namespace dragongod_samples::dragon_hft
     {
         MarketEvent event{};
         OrderSide desiredSide = OrderSide::None;
+        bool isReentryAttempt = false;
         bool blockedDuplicate = false;
         bool canceledStale = false;
         std::string holdReason;
@@ -34,11 +35,26 @@ namespace dragongod_samples::dragon_hft
         [[nodiscard]] HftState& Bb() { return bb; }
     };
 
+    void RecordOutstandingFlip(HftState& state, const OrderSide previousSide, const OrderSide nextSide)
+    {
+        if (previousSide == nextSide) {
+            return;
+        }
+
+        state.orderStateFlipCount += 1;
+    }
+
     [[nodiscard]] HftPhase IngestMarketEventFrame(FrameCtx& ctx)
     {
         ctx.scratch.event = ctx.mailboxEvent;
         ctx.Bb().latestSignal = ctx.scratch.event.signal;
         AdvanceOutstandingAge(ctx.Bb());
+        if (ctx.Bb().enableMinCommit && IsOutstandingActive(ctx.Bb()) && ctx.Bb().minCommitTicksRemaining > 0) {
+            ctx.Bb().minCommitTicksRemaining -= 1;
+        }
+        if (ctx.Bb().awaitingReentryAfterStaleCancel) {
+            ctx.Bb().ticksSinceStaleCancel += 1;
+        }
         ctx.trace.push_back(
             "Ingest signal=" + std::to_string(ctx.scratch.event.signal) +
             " outstandingAgeTicks=" + std::to_string(ctx.Bb().outstandingAgeTicks));
@@ -48,6 +64,11 @@ namespace dragongod_samples::dragon_hft
     [[nodiscard]] HftPhase StaleCheckFrame(FrameCtx& ctx)
     {
         if (ShouldCancelStaleOrder(ctx.Bb())) {
+            if (ctx.Bb().enableMinCommit && ctx.Bb().minCommitTicksRemaining > 0) {
+                ctx.Bb().staleCancelBlockedByMinCommitCount += 1;
+                return HftPhase::Decision;
+            }
+
             return HftPhase::CancelStaleOrder;
         }
 
@@ -57,9 +78,13 @@ namespace dragongod_samples::dragon_hft
     [[nodiscard]] HftPhase CancelStaleOrderFrame(FrameCtx& ctx)
     {
         const OrderSide canceledSide = ctx.Bb().outstandingOrder;
+        RecordOutstandingFlip(ctx.Bb(), canceledSide, OrderSide::None);
         ctx.Bb().outstandingOrder = OrderSide::None;
         ctx.Bb().outstandingState = OutstandingState::None;
         ctx.Bb().outstandingAgeTicks = 0;
+        ctx.Bb().minCommitTicksRemaining = 0;
+        ctx.Bb().awaitingReentryAfterStaleCancel = true;
+        ctx.Bb().ticksSinceStaleCancel = 0;
         ctx.Bb().cancelCount += 1;
         ctx.scratch.canceledStale = true;
 
@@ -79,10 +104,17 @@ namespace dragongod_samples::dragon_hft
     {
         const OrderSide desiredSide = DesiredOrderSide(ctx.Bb().latestSignal, ctx.Bb().threshold);
         ctx.scratch.desiredSide = desiredSide;
+        ctx.scratch.isReentryAttempt = ctx.Bb().awaitingReentryAfterStaleCancel && desiredSide != OrderSide::None;
         ctx.scratch.blockedDuplicate = false;
 
         if (desiredSide == OrderSide::None) {
             ctx.scratch.holdReason = "NoEdge";
+            return HftPhase::Hold;
+        }
+
+        if (ctx.scratch.isReentryAttempt && !ReentryHysteresisSatisfied(ctx.Bb().latestSignal, ctx.Bb())) {
+            ctx.Bb().reentryBlockedByHysteresisCount += 1;
+            ctx.scratch.holdReason = "ReentryBlockedByHysteresis";
             return HftPhase::Hold;
         }
 
@@ -105,9 +137,20 @@ namespace dragongod_samples::dragon_hft
 
     [[nodiscard]] HftPhase PlaceBuyFrame(FrameCtx& ctx)
     {
+        const OrderSide previousSide = ctx.Bb().outstandingOrder;
         ctx.Bb().outstandingOrder = OrderSide::Buy;
         ctx.Bb().outstandingState = OutstandingState::Fresh;
         ctx.Bb().outstandingAgeTicks = 0;
+        RecordOutstandingFlip(ctx.Bb(), previousSide, ctx.Bb().outstandingOrder);
+        if (ctx.scratch.isReentryAttempt) {
+            ctx.Bb().reentrySubmitCount += 1;
+            ctx.Bb().lastReentryLatencyTicks = ctx.Bb().ticksSinceStaleCancel;
+            ctx.Bb().awaitingReentryAfterStaleCancel = false;
+            ctx.Bb().ticksSinceStaleCancel = 0;
+            if (ctx.Bb().enableMinCommit) {
+                ctx.Bb().minCommitTicksRemaining = ctx.Bb().minCommitTicks;
+            }
+        }
         ctx.Bb().submitCount += 1;
 
         ctx.actuation.push_back(HftActuation{
@@ -124,9 +167,20 @@ namespace dragongod_samples::dragon_hft
 
     [[nodiscard]] HftPhase PlaceSellFrame(FrameCtx& ctx)
     {
+        const OrderSide previousSide = ctx.Bb().outstandingOrder;
         ctx.Bb().outstandingOrder = OrderSide::Sell;
         ctx.Bb().outstandingState = OutstandingState::Fresh;
         ctx.Bb().outstandingAgeTicks = 0;
+        RecordOutstandingFlip(ctx.Bb(), previousSide, ctx.Bb().outstandingOrder);
+        if (ctx.scratch.isReentryAttempt) {
+            ctx.Bb().reentrySubmitCount += 1;
+            ctx.Bb().lastReentryLatencyTicks = ctx.Bb().ticksSinceStaleCancel;
+            ctx.Bb().awaitingReentryAfterStaleCancel = false;
+            ctx.Bb().ticksSinceStaleCancel = 0;
+            if (ctx.Bb().enableMinCommit) {
+                ctx.Bb().minCommitTicksRemaining = ctx.Bb().minCommitTicks;
+            }
+        }
         ctx.Bb().submitCount += 1;
 
         ctx.actuation.push_back(HftActuation{
