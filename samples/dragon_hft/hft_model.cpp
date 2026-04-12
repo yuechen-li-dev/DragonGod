@@ -2,25 +2,43 @@
 
 namespace dragongod_samples::dragon_hft
 {
-    [[nodiscard]] MarketReactionState BuildInitialHftState()
+    [[nodiscard]] bool IsActionableSignal(const int signal, const int threshold)
     {
-        return MarketReactionState{};
+        return signal >= threshold || signal <= -threshold;
     }
 
-    [[nodiscard]] HftScaffoldSmokeOutput RunHftScaffoldSmoke()
+    [[nodiscard]] OrderSide DesiredOrderSide(const int signal, const int threshold)
     {
-        MarketReactionState state = BuildInitialHftState();
-        AdvanceHftScaffoldNodes(state);
+        if (signal >= threshold) {
+            return OrderSide::Buy;
+        }
 
-        const dragongod::StackFrameRuntime runtime;
-        const dragongod::FrameRunResult run = runtime.RunForTicks(
-            dragongod::StackScriptScenario::PushPopComplete,
-            1);
+        if (signal <= -threshold) {
+            return OrderSide::Sell;
+        }
 
-        return HftScaffoldSmokeOutput{
-            .state = state,
-            .runtimeOutcome = run.finalOutcome,
-            .runtimeTraceCount = run.trace.size()
-        };
+        return OrderSide::None;
+    }
+
+    [[nodiscard]] bool ShouldSubmitOrder(const OrderSide desiredSide, const OrderSide outstandingOrder)
+    {
+        if (desiredSide == OrderSide::None) {
+            return false;
+        }
+
+        return desiredSide != outstandingOrder;
+    }
+
+    [[nodiscard]] int PriceForOrder(const MarketEvent& event, const OrderSide side)
+    {
+        if (side == OrderSide::Buy) {
+            return event.bestAsk;
+        }
+
+        if (side == OrderSide::Sell) {
+            return event.bestBid;
+        }
+
+        return 0;
     }
 }
