@@ -88,3 +88,25 @@ FACT(M14c_Model_ReentryHysteresisSatisfied_RequiresExtraMarginWhenEnabled)
     state.enableReentryHysteresis = false;
     ASSERT_TRUE(ReentryHysteresisSatisfied(6, state), "disabled hysteresis should allow ordinary actionable reentry checks");
 }
+
+FACT(M14d_Model_ReentryOscillationScenario_BuildersAreDeterministicAndBounded)
+{
+    const HftState baseline = BuildReentryOscillationBaselineState();
+    const HftState hysteresis = BuildReentryOscillationHysteresisState();
+    const HftState minCommit = BuildReentryOscillationMinCommitState();
+    const std::vector<MarketEvent> mailbox = BuildReentryOscillationMailbox();
+
+    ASSERT_EQUAL(5, baseline.threshold, "oscillation baseline should keep fixed threshold");
+    ASSERT_EQUAL(1, baseline.staleTickThreshold, "oscillation baseline should use short stale threshold to expose churn");
+    ASSERT_TRUE(hysteresis.enableReentryHysteresis, "hysteresis variant should be enabled");
+    ASSERT_EQUAL(2, hysteresis.reentryHysteresisMargin, "hysteresis variant should require stronger reentry signal");
+    ASSERT_TRUE(minCommit.enableMinCommit, "min-commit variant should be enabled");
+    ASSERT_EQUAL(4, minCommit.minCommitTicks, "min-commit variant should hold commitment through oscillating boundary events");
+
+    ASSERT_EQUAL(8, static_cast<int>(mailbox.size()), "oscillation mailbox should be fixed and bounded");
+    ASSERT_EQUAL(8, mailbox[0].signal, "scenario should begin with actionable submit pressure");
+    ASSERT_EQUAL(5, mailbox[3].signal, "scenario should test barely actionable boundary after stale cancel");
+    ASSERT_EQUAL(4, mailbox[4].signal, "scenario should include a non-actionable event");
+    ASSERT_EQUAL(5, mailbox[5].signal, "scenario should re-test borderline actionable pressure");
+    ASSERT_EQUAL(8, mailbox[6].signal, "scenario should include stronger confirmation later");
+}

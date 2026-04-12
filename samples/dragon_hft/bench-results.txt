@@ -1,5 +1,5 @@
-[BENCH] DragonHft_ReentryBaselineBench iterations=10000 elapsed_ns=289841470 avg_ns=28984
-[BENCH] DragonHft_ReentryHysteresisBench iterations=10000 elapsed_ns=328314249 avg_ns=32831
-[BENCH] DragonHft_ReentryMinCommitBench iterations=10000 elapsed_ns=333326257 avg_ns=33332
+[BENCH] DragonHft_ReentryOscillationBaselineBench iterations=10000 elapsed_ns=248339017 avg_ns=24833
+[BENCH] DragonHft_ReentryOscillationHysteresisBench iterations=10000 elapsed_ns=236319157 avg_ns=23631
+[BENCH] DragonHft_ReentryOscillationMinCommitBench iterations=10000 elapsed_ns=240505551 avg_ns=24050
 
 Benchmark Summary: 3 benchmark(s)

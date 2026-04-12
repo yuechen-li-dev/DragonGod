@@ -90,4 +90,42 @@ namespace dragongod_samples::dragon_hft
 
         return 0;
     }
+
+    [[nodiscard]] HftState BuildReentryOscillationBaselineState()
+    {
+        HftState state{};
+        state.threshold = 5;
+        state.staleTickThreshold = 1;
+        return state;
+    }
+
+    [[nodiscard]] HftState BuildReentryOscillationHysteresisState()
+    {
+        HftState state = BuildReentryOscillationBaselineState();
+        state.enableReentryHysteresis = true;
+        state.reentryHysteresisMargin = 2;
+        return state;
+    }
+
+    [[nodiscard]] HftState BuildReentryOscillationMinCommitState()
+    {
+        HftState state = BuildReentryOscillationBaselineState();
+        state.enableMinCommit = true;
+        state.minCommitTicks = 4;
+        return state;
+    }
+
+    [[nodiscard]] std::vector<MarketEvent> BuildReentryOscillationMailbox()
+    {
+        return {
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 5 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 4 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 5 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 },
+            MarketEvent{ .bestBid = 100, .bestAsk = 101, .signal = 8 }
+        };
+    }
 }

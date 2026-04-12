@@ -103,6 +103,10 @@ namespace dragongod_samples::dragon_hft
     [[nodiscard]] bool ShouldSubmitOrder(OrderSide desiredSide, const HftState& state);
     [[nodiscard]] bool ReentryHysteresisSatisfied(int signal, const HftState& state);
     [[nodiscard]] int PriceForOrder(const MarketEvent& event, OrderSide side);
+    [[nodiscard]] HftState BuildReentryOscillationBaselineState();
+    [[nodiscard]] HftState BuildReentryOscillationHysteresisState();
+    [[nodiscard]] HftState BuildReentryOscillationMinCommitState();
+    [[nodiscard]] std::vector<MarketEvent> BuildReentryOscillationMailbox();
 
     [[nodiscard]] HftRunOutput RunHftGoldenPath(const HftState& initialState, const std::vector<MarketEvent>& mailboxEvents);
 }
