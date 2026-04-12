@@ -74,6 +74,7 @@ Heavy queue/retry comparisons are intentionally bounded:
 Observed run conditions for this report:
 
 - build command:
+  - `mkdir -p out`
   - `g++ -std=c++23 -Wall -Wextra -pedantic -DMARIONETTE_TEST_REPO_ROOT="/workspace/DragonGod" ... -o out/dragon_router_tests`
 - benchmark command:
   - `./out/dragon_router_tests --bench DragonRouter_`
