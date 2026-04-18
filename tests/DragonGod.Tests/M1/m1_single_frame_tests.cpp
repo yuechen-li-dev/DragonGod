@@ -319,3 +319,55 @@ FACT(M1c_RepeatedRuns_WithSameInputs_HaveNoTraceDrift)
     ASSERT_EQUAL(firstRun.trace.size(), secondRun.trace.size(), "deterministic runs must match trace length");
     ASSERT_SEQUENCE_EQUAL(SerializeTrace(firstRun.trace), SerializeTrace(secondRun.trace), "deterministic runs must match ordered trace exactly");
 }
+
+namespace
+{
+    [[nodiscard]] dragongod::FrameControl AuthorRootContinueThenComplete(dragongod::FrameCtx& ctx)
+    {
+        switch (ctx.Pc()) {
+        case 0:
+            return dragongod::Dg::Continue(1);
+        case 1:
+            return dragongod::Dg::Complete();
+        default:
+            return dragongod::Dg::Fail(9500);
+        }
+    }
+}
+
+FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryAtSessionConstruction)
+{
+    dragongod::FrameRegistry registry;
+    registry.Add(dragongod::FrameId::UtilityActionFallback, &AuthorRootContinueThenComplete);
+
+    dragongod::StackFrameRuntimeSession session(dragongod::StackFrameSessionInit{
+        .registry = registry,
+        .rootFrame = dragongod::FrameId::UtilityActionFallback,
+        .mailboxInput = {}
+    });
+
+    const dragongod::FrameRunResult run = session.RunForTicks(4);
+
+    ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "author-owned registry/root should execute to completion");
+}
+
+FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryOnRestore)
+{
+    dragongod::FrameRegistry registry;
+    registry.Add(dragongod::FrameId::UtilityActionFallback, &AuthorRootContinueThenComplete);
+
+    dragongod::StackFrameRuntimeSession initial(dragongod::StackFrameSessionInit{
+        .registry = registry,
+        .rootFrame = dragongod::FrameId::UtilityActionFallback,
+        .mailboxInput = {}
+    });
+
+    const dragongod::FrameRunResult legA = initial.RunForTicks(1);
+    const dragongod::RuntimeChunk snapshot = initial.Save();
+
+    dragongod::StackFrameRuntimeSession restored(snapshot, registry);
+    const dragongod::FrameRunResult legB = restored.RunForTicks(4);
+
+    ASSERT_TRUE(legA.finalOutcome == dragongod::StackRunOutcome::Continue, "first leg should stop after continue phase");
+    ASSERT_TRUE(legB.finalOutcome == dragongod::StackRunOutcome::Completed, "restored session should complete with caller-provided registry");
+}

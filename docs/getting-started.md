@@ -1,15 +1,15 @@
 # DragonGod getting started (current repo workflow)
 
-## Read this first: current registration limitation
+## Read this first: public registration seam
 
-DragonGod frame registration is currently **internal/static**.
+DragonGod now supports two explicit registration paths:
 
-That means your first authored frame today requires editing core runtime files directly:
+- **Canonical fixture path**: built-in proof/demo scenarios via `StackScriptScenario` using
+  `BuildCanonicalFrameRegistry()` + `CanonicalScenarioRootFrame(...)`.
+- **Author-owned path**: caller-provided `FrameRegistry` + root frame via `StackFrameSessionInit`.
 
-- `src/DragonGod/runtime.h` (add `FrameId` and usually a `StackScriptScenario` value)
-- `src/DragonGod/runtime_nodes.cpp` (add frame function(s), scenario root mapping, and `BuildFrameRegistry()` entry)
-
-There is not yet an external “register my own frame pack” public API.
+Use the canonical path for core proof coverage.
+Use the author-owned path for sample/app domains so runtime stays a generic kernel.
 
 ---
 
@@ -61,7 +61,7 @@ enum class StackScriptScenario
 
 ### 2) Map scenario -> root frame
 
-In `ScenarioRootFrameImpl(...)` inside `src/DragonGod/runtime_nodes.cpp`:
+In the internal `ScenarioRootFrameImpl(...)` mapping used by `CanonicalScenarioRootFrame(...)` inside `src/DragonGod/runtime_nodes.cpp`:
 
 ```cpp
 if (scenario == StackScriptScenario::HelloTwoPhaseComplete) {
@@ -95,7 +95,7 @@ enum class RootHelloTwoPhasePhase : std::uint32_t
 
 ### 4) Register the frame in the internal registry
 
-In `BuildFrameRegistry()` inside `src/DragonGod/runtime_nodes.cpp`:
+In `BuildCanonicalFrameRegistry()` inside `src/DragonGod/runtime_nodes.cpp`:
 
 ```cpp
 registry.Add(FrameId::RootHelloTwoPhase, &nodes::RootHelloTwoPhase);
@@ -161,7 +161,7 @@ All are in `src/DragonGod/runtime_nodes.cpp` and exercised by tests in `tests/Dr
 ## Common first-day mistakes (avoid these)
 
 - Don’t store your own phase counter in blackboard; use `ctx.PcAs<TEnum>()`.
-- Don’t bypass frame registration in `BuildFrameRegistry()`; pushing/replacing into an unregistered frame causes terminal runtime failure (not a no-op).
+- Don’t bypass frame registration (canonical or author-owned); pushing/replacing into an unregistered frame causes terminal runtime failure (not a no-op).
 - If terminal failure appears with no authored `Dg::Fail(...)` explanation, check whether every pushed/replaced target frame is registered.
 - Don’t mutate external world state directly from frame logic; use `ctx.Act()` request emission.
 - Don’t treat `Wait` as terminal; it is a non-terminal outcome.

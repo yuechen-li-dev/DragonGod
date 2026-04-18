@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "runtime_internal.h"
 
 namespace dragongod
@@ -50,23 +52,37 @@ namespace dragongod
     StackFrameRuntimeSession::StackFrameRuntimeSession(
         StackScriptScenario scenario,
         const RuntimeMailboxInput& mailboxInput)
-        : scenario_(scenario)
-        , registry_(BuildRegistry())
-        , scheduledMessages_(mailboxInput.scheduledMessages)
+        : StackFrameRuntimeSession(StackFrameSessionInit{
+            .registry = BuildRegistry(),
+            .rootFrame = RootFrameForScenario(scenario),
+            .mailboxInput = mailboxInput
+        })
+    {
+        scenario_ = scenario;
+    }
+
+    StackFrameRuntimeSession::StackFrameRuntimeSession(StackFrameSessionInit init)
+        : registry_(std::move(init.registry))
+        , scheduledMessages_(init.mailboxInput.scheduledMessages)
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
-        stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
-        for (const Message& message : mailboxInput.initialMessages) {
+        stack_.push_back(StackFrameChunkEntry{ .id = init.rootFrame });
+        for (const Message& message : init.mailboxInput.initialMessages) {
             mailbox_.Enqueue(message);
         }
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk)
+        : StackFrameRuntimeSession(chunk, BuildRegistry())
+    {
+    }
+
+    StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk, FrameRegistry registry)
         : scenario_(chunk.scenario)
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
-        , registry_(BuildRegistry())
+        , registry_(std::move(registry))
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
@@ -284,7 +300,12 @@ namespace dragongod
 
     [[nodiscard]] FrameRegistry StackFrameRuntimeSession::BuildRegistry()
     {
-        return BuildFrameRegistry();
+        return BuildCanonicalFrameRegistry();
+    }
+
+    [[nodiscard]] FrameId StackFrameRuntimeSession::RootFrameForScenario(StackScriptScenario scenario)
+    {
+        return CanonicalScenarioRootFrame(scenario);
     }
 
     [[nodiscard]] TraceComparisonResult CompareTickTraces(
@@ -425,6 +446,12 @@ namespace dragongod
     [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const
     {
         return RunForTicks(scenario, tickCount, RuntimeMailboxInput{});
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(const StackFrameSessionInit& init, TickIndex tickCount) const
+    {
+        StackFrameRuntimeSession session(init);
+        return session.RunForTicks(tickCount);
     }
 
     [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(

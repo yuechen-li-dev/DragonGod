@@ -531,11 +531,20 @@ namespace dragongod
         [[nodiscard]] bool operator==(const RuntimeChunk& other) const = default;
     };
 
+    struct StackFrameSessionInit
+    {
+        FrameRegistry registry;
+        FrameId rootFrame = FrameId::RootPushChild;
+        RuntimeMailboxInput mailboxInput;
+    };
+
     class StackFrameRuntimeSession
     {
     public:
         StackFrameRuntimeSession(StackScriptScenario scenario, const RuntimeMailboxInput& mailboxInput);
+        explicit StackFrameRuntimeSession(StackFrameSessionInit init);
         explicit StackFrameRuntimeSession(const RuntimeChunk& chunk);
+        StackFrameRuntimeSession(const RuntimeChunk& chunk, FrameRegistry registry);
         ~StackFrameRuntimeSession();
 
         [[nodiscard]] TickIndex NextTick() const;
@@ -547,6 +556,7 @@ namespace dragongod
 
     private:
         [[nodiscard]] static FrameRegistry BuildRegistry();
+        [[nodiscard]] static FrameId RootFrameForScenario(StackScriptScenario scenario);
         [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
 
         StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
@@ -565,11 +575,17 @@ namespace dragongod
     {
     public:
         [[nodiscard]] FrameRunResult RunForTicks(StackScriptScenario scenario, TickIndex tickCount) const;
+        [[nodiscard]] FrameRunResult RunForTicks(const StackFrameSessionInit& init, TickIndex tickCount) const;
         [[nodiscard]] FrameRunResult RunForTicks(
             StackScriptScenario scenario,
             TickIndex tickCount,
             const RuntimeMailboxInput& mailboxInput) const;
     };
+
+    // Built-in canonical fixture helpers.
+    // Author-owned domains may supply their own registries and roots through StackFrameSessionInit.
+    [[nodiscard]] FrameId CanonicalScenarioRootFrame(StackScriptScenario scenario);
+    [[nodiscard]] FrameRegistry BuildCanonicalFrameRegistry();
 
     // Built-in scorer fixtures used by canonical proof/demo scenarios.
     // These are neutral examples for deterministic utility coverage, not domain constraints.
