@@ -16,11 +16,10 @@ DragonGod currently provides a deterministic, tick-driven stack-frame runtime ce
 - chunk-based save/restore across a strict between-ticks boundary
 - replay comparison via bounded `TickTraceEntry` data
 
-Runtime entry points are `StackFrameRuntime` and `StackFrameRuntimeSession`; scenarios are currently selected by `StackScriptScenario` and mapped to built-in frame functions in the frame registry.
+Runtime entry points are `StackFrameRuntime` and `StackFrameRuntimeSession`.
 
-### Important current-shape limitation
-
-The current repository does **not** yet expose a generic external author-registration API for arbitrary user-defined frame sets. The runtime uses a built-in registry populated by `BuildFrameRegistry()` and scenario-to-root mapping via `ScenarioRootFrame(...)`.
+- Canonical proof/demo runs can still use `StackScriptScenario` values mapped to built-in fixtures.
+- Author-owned domains can now provide their own `FrameRegistry` + root frame via `StackFrameSessionInit`.
 
 ---
 

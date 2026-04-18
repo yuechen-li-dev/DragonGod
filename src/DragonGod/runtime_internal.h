@@ -45,6 +45,4 @@ namespace dragongod
         std::vector<ActRequest> pending_;
     };
 
-    [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario);
-    [[nodiscard]] FrameRegistry BuildFrameRegistry();
 }

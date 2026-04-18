@@ -789,12 +789,12 @@ namespace dragongod
         }
     }
 
-    [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario)
+    [[nodiscard]] FrameId CanonicalScenarioRootFrame(StackScriptScenario scenario)
     {
         return ScenarioRootFrameImpl(scenario);
     }
 
-    [[nodiscard]] FrameRegistry BuildFrameRegistry()
+    [[nodiscard]] FrameRegistry BuildCanonicalFrameRegistry()
     {
         FrameRegistry registry;
         registry.Add(FrameId::RootPushChild, &nodes::RootPushChild);
