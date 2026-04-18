@@ -4,6 +4,8 @@ namespace dragongod
 {
     namespace
     {
+        // Canonical scenario->root mapping for built-in proof/demo fixtures.
+        // Author-owned domains can pick any root through StackFrameSessionInit.
         [[nodiscard]] FrameId ScenarioRootFrameImpl(StackScriptScenario scenario)
         {
             if (scenario == StackScriptScenario::PushPopComplete) {
@@ -155,6 +157,8 @@ namespace dragongod
 
         namespace nodes
         {
+            // Canonical fixture node set used by repo proof/demo scenarios and tests.
+            // This namespace is intentionally example-heavy; it is not the runtime kernel itself.
             enum class RootMailboxConsumePhase : std::uint32_t
             {
                 ConsumeFirst,
@@ -796,6 +800,8 @@ namespace dragongod
 
     [[nodiscard]] FrameRegistry BuildCanonicalFrameRegistry()
     {
+        // Canonical fixture registry used by scenario-based constructors and tests.
+        // Domains may provide an alternative caller-owned registry.
         FrameRegistry registry;
         registry.Add(FrameId::RootPushChild, &nodes::RootPushChild);
         registry.Add(FrameId::RootReplace, &nodes::RootReplace);

@@ -185,6 +185,7 @@ namespace dragongod
         runtime_->ScheduleDeferred(id, delayTicks);
     }
 
+    // Minimal context constructor used by focused unit tests for local surface behavior.
     FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard)
         : frameId_(frameId)
         , tick_(tick)
@@ -194,6 +195,7 @@ namespace dragongod
     {
     }
 
+    // Extended test helper constructor when mailbox behavior is part of the test surface.
     FrameCtx::FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard, Mailbox& mailbox)
         : frameId_(frameId)
         , tick_(tick)
@@ -214,6 +216,7 @@ namespace dragongod
         ActRuntime& actRuntime,
         UtilityMemoryStore& utilityMemory,
         std::vector<UtilityDecisionTraceEntry>& utilityTrace)
+        // Full runtime constructor used by StackFrameRuntimeSession while executing real ticks.
         : frameId_(frameId)
         , tick_(tick)
         , pc_(pc)
@@ -490,6 +493,7 @@ namespace dragongod
 
     void FrameRegistry::Add(FrameId id, FrameFn function)
     {
+        // Registry contents are caller-owned domain wiring (canonical fixtures are just one caller).
         definitions_.push_back(FrameDef{
             .id = id,
             .function = function
@@ -498,6 +502,7 @@ namespace dragongod
 
     [[nodiscard]] FrameFn FrameRegistry::Find(FrameId id) const
     {
+        // Missing targets are treated as runtime failure by session execution, not silently ignored.
         for (const FrameDef& definition : definitions_) {
             if (definition.id == id) {
                 return definition.function;

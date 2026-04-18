@@ -52,6 +52,7 @@ namespace dragongod
     StackFrameRuntimeSession::StackFrameRuntimeSession(
         StackScriptScenario scenario,
         const RuntimeMailboxInput& mailboxInput)
+        // Canonical fixture convenience path used by existing in-repo scenario tests.
         : StackFrameRuntimeSession(StackFrameSessionInit{
             .registry = BuildRegistry(),
             .rootFrame = RootFrameForScenario(scenario),
@@ -62,6 +63,7 @@ namespace dragongod
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(StackFrameSessionInit init)
+        // Author-owned runtime entry path: caller supplies registry/root/mailbox input directly.
         : registry_(std::move(init.registry))
         , scheduledMessages_(init.mailboxInput.scheduledMessages)
         , actRuntime_(std::make_unique<ActRuntime>())
@@ -300,6 +302,8 @@ namespace dragongod
 
     [[nodiscard]] FrameRegistry StackFrameRuntimeSession::BuildRegistry()
     {
+        // This only builds the built-in canonical fixture registry.
+        // Author code can bypass this by providing StackFrameSessionInit.registry.
         return BuildCanonicalFrameRegistry();
     }
 

@@ -10,6 +10,7 @@ DragonGod now supports two explicit registration paths:
 
 Use the canonical path for core proof coverage.
 Use the author-owned path for sample/app domains so runtime stays a generic kernel.
+Both paths are first-class runtime entry points.
 
 ---
 
@@ -146,7 +147,38 @@ FACT(HelloTwoPhase_Completes)
 
 ---
 
+## Author-owned registration path (M16a seam)
+
+If you are authoring your own domain, you do not need to wire through `StackScriptScenario`.
+You can provide your own registry, root frame, and mailbox input directly:
+
+```cpp
+dragongod::FrameRegistry registry;
+registry.Add(FrameId::MyDomainRoot, &MyDomainRootFrame);
+registry.Add(FrameId::MyDomainChild, &MyDomainChildFrame);
+
+dragongod::StackFrameSessionInit init{
+    .registry = registry,
+    .rootFrame = FrameId::MyDomainRoot,
+    .mailboxInput = dragongod::RuntimeMailboxInput{
+        .initialMessages = {},
+        .scheduledMessages = {}
+    }
+};
+
+const dragongod::StackFrameRuntime runtime;
+const dragongod::FrameRunResult run = runtime.RunForTicks(init, 32);
+```
+
+Use this path for real authored domains.
+Treat canonical scenario wiring as in-repo proof/demo fixtures.
+
+---
+
 ## Where to look for canonical in-repo examples
+
+These are fixture examples used to prove runtime behavior.
+They are useful templates, but they are not the only valid registration path.
 
 - Typed phase + mailbox + `Stay()`: `RootTypedPhaseMailboxAct`.
 - Blackboard set/read flow: `RootSetThenReadBlackboard`.
