@@ -4,7 +4,7 @@ Use this page to pick the right document quickly.
 
 ## Read order for new contributors
 
-1. [`getting-started.md`](./getting-started.md) — First frame + first test path against today’s internal registry workflow.
+1. [`getting-started.md`](./getting-started.md) — First frame + first test path for both canonical fixtures and author-owned registration.
 2. [`frame-authoring.md`](./frame-authoring.md) — Canonical authored frame shape, helpers, and anti-patterns.
 3. [`trace-and-replay.md`](./trace-and-replay.md) — Tick ordering and bounded replay comparison surface.
 4. [`marionette.md`](./marionette.md) — Harness macros, benchmark/doom modes, artifacts, and CLI behavior.

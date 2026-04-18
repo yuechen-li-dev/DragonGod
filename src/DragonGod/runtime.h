@@ -21,6 +21,8 @@ namespace dragongod
         Failed
     };
 
+    // These ids currently include canonical proof/demo fixture frames shipped in-repo.
+    // Author-owned domains can define and register their own frame sets through FrameRegistry.
     enum class FrameId
     {
         RootPushChild,
@@ -335,6 +337,8 @@ namespace dragongod
     class FrameCtx
     {
     public:
+        // Read-only frame identity/phase/tick metadata plus access to mutable runtime surfaces.
+        // This is the primary author-facing context passed to every frame function.
         FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard);
         FrameCtx(FrameId frameId, TickIndex tick, std::uint32_t pc, bool entered, Blackboard& blackboard, Mailbox& mailbox);
 
@@ -389,6 +393,7 @@ namespace dragongod
     class FrameRegistry
     {
     public:
+        // Register caller-owned frame functions for a domain/session.
         void Add(FrameId id, FrameFn function);
         [[nodiscard]] FrameFn Find(FrameId id) const;
 
@@ -533,6 +538,7 @@ namespace dragongod
 
     struct StackFrameSessionInit
     {
+        // Public M16a seam: callers provide registry + explicit root + mailbox seed input.
         FrameRegistry registry;
         FrameId rootFrame = FrameId::RootPushChild;
         RuntimeMailboxInput mailboxInput;

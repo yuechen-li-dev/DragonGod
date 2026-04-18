@@ -4,6 +4,14 @@ This page is the practical style guide for authoring frame logic against the run
 
 For runtime semantics details, cross-check [`runtime-truth.md`](./runtime-truth.md).
 
+## Core runtime vs canonical fixture code
+
+- Runtime core machinery is the generic execution kernel (`FrameCtx`, `Mailbox`, `Blackboard`, actuation, utility, tick/session flow).
+- `src/DragonGod/runtime_nodes.cpp` contains canonical proof/demo fixtures used by in-repo scenarios and tests.
+- Author-owned domains are expected to define their own frame sets and register them through `FrameRegistry` + explicit root frame (`StackFrameSessionInit`).
+
+Read canonical nodes as examples/proofs, not as a required domain schema.
+
 ## Canonical frame shape
 
 ```cpp

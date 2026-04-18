@@ -59,6 +59,7 @@ recommended:
   - Prefer composition over inheritance.
   - Prefer simple structs and classes with obvious responsibilities.
   - Prefer std::vector, std::string, std::array, std::span, std::optional, and std::variant where they fit naturally.
+  - Prefer std::expected<T, E> for fallible operations that need explicit error detail at the call site.
   - Prefer enum class over unscoped enum.
   - Prefer simple free functions when a class adds no real invariant or state value.
   - Prefer straightforward control flow over abstraction-heavy indirection.
@@ -89,6 +90,10 @@ restricted:
   - RTTI and dynamic_cast are restricted.
   - Multiple inheritance is restricted.
   - Template metaprogramming, SFINAE acrobatics, and compile-time framework building are restricted.
+  - Explicit object parameters ("deducing this") are banned.
+  - Deep std::ranges/std::views pipelines are restricted; only short local pipelines with obvious lifetime safety are acceptable.
+  - Moving ordinary runtime logic into constexpr/meta machinery without a documented reason is restricted.
+  - std::mdspan is restricted to cases that truly require multidimensional non-owning views, with local layout/data-contract documentation.
   - Compiler-specific extensions, intrinsics, and vendor lock-in patterns are restricted.
   - Macros are restricted to unavoidable low-level use such as platform or compiler glue and include control.
   - Hidden singleton patterns are restricted.
@@ -239,7 +244,7 @@ default_patterns:
 portability_rules:
   - Code must not depend on one compiler's extensions unless explicitly isolated and justified.
   - Do not assume platform-specific behavior without an abstraction boundary.
-  - Prefer portable standard C++20 facilities first.
+  - Prefer portable standard C++23 facilities first.
   - If non-portable code is truly required, isolate it behind a narrow boundary and document why.
   - Do not use vendor-specific behavior as a convenience shortcut in ordinary code.
 
