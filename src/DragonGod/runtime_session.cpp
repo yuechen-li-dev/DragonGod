@@ -18,6 +18,27 @@ namespace dragongod
             return "unknown";
         }
 
+        [[nodiscard]] const char* MessageKindName(MessageKind kind)
+        {
+            switch (kind) {
+            case MessageKind::Signal: return "signal";
+            case MessageKind::Alert: return "alert";
+            }
+            return "unknown";
+        }
+
+        [[nodiscard]] const char* ActIdName(ActId id)
+        {
+            switch (id) {
+            case ActId::PlayBark: return "play_bark";
+            case ActId::RaiseAlarm: return "raise_alarm";
+            case ActId::OpenDoor: return "open_door";
+            case ActId::UtilityPrimary: return "utility_primary";
+            case ActId::UtilitySecondary: return "utility_secondary";
+            }
+            return "unknown";
+        }
+
         [[nodiscard]] const char* CanonicalFrameName(FrameId id)
         {
             if (id == CanonicalFrameIds::RootPushChild) return "root_push_child";
@@ -424,7 +445,7 @@ namespace dragongod
 
             line += "|mailbox=";
             for (const Message& message : entry.visibleMailbox) {
-                line += std::to_string(static_cast<int>(message.kind));
+                line += MessageKindName(message.kind);
                 line += ",";
                 line += std::to_string(message.value);
                 line += ";";
@@ -453,7 +474,7 @@ namespace dragongod
 
             line += "|act=";
             for (const ActRequest& request : entry.emittedActuation) {
-                line += std::to_string(static_cast<int>(request.id));
+                line += ActIdName(request.id);
                 line += ",";
                 line += request.deferred ? "d" : "i";
                 line += ",";
@@ -467,7 +488,7 @@ namespace dragongod
 
             line += "|pendingAct=";
             for (const ActRequest& request : entry.pendingDeferredActuation) {
-                line += std::to_string(static_cast<int>(request.id));
+                line += ActIdName(request.id);
                 line += ",";
                 line += std::to_string(request.dueTick);
                 line += ",";

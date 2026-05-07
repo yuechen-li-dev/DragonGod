@@ -11,6 +11,46 @@ namespace
         return std::to_string(id.domain) + ":" + std::to_string(id.local);
     }
 
+    [[nodiscard]] const char* TraceKindToString(dragongod::FrameTraceKind kind)
+    {
+        switch (kind) {
+        case dragongod::FrameTraceKind::Tick: return "tick";
+        case dragongod::FrameTraceKind::Enter: return "enter";
+        case dragongod::FrameTraceKind::Step: return "step";
+        case dragongod::FrameTraceKind::Push: return "push";
+        case dragongod::FrameTraceKind::Pop: return "pop";
+        case dragongod::FrameTraceKind::Replace: return "replace";
+        case dragongod::FrameTraceKind::ExitCompleted: return "exit_completed";
+        case dragongod::FrameTraceKind::ExitFailed: return "exit_failed";
+        case dragongod::FrameTraceKind::TerminalCompleted: return "terminal_completed";
+        case dragongod::FrameTraceKind::TerminalFailed: return "terminal_failed";
+        }
+        return "unknown";
+    }
+
+    [[nodiscard]] const char* FrameControlToString(dragongod::FrameControlKind control)
+    {
+        switch (control) {
+        case dragongod::FrameControlKind::Continue: return "continue";
+        case dragongod::FrameControlKind::Wait: return "wait";
+        case dragongod::FrameControlKind::Push: return "push";
+        case dragongod::FrameControlKind::Pop: return "pop";
+        case dragongod::FrameControlKind::Replace: return "replace";
+        case dragongod::FrameControlKind::Complete: return "complete";
+        case dragongod::FrameControlKind::Fail: return "fail";
+        }
+        return "unknown";
+    }
+
+    [[nodiscard]] const char* MessageKindToString(dragongod::MessageKind kind)
+    {
+        switch (kind) {
+        case dragongod::MessageKind::Signal: return "signal";
+        case dragongod::MessageKind::Alert: return "alert";
+        }
+        return "unknown";
+    }
+
     namespace Keys
     {
         constexpr dragongod::BbKey<int> FirstMessageValue{ .name = "FirstMessageValue", .slot = 4 };
@@ -39,7 +79,7 @@ namespace
         for (const std::vector<dragongod::Message>& tickMessages : visibleMailboxByTick) {
             std::string line;
             for (const dragongod::Message& message : tickMessages) {
-                line += std::to_string(static_cast<int>(message.kind));
+                line += MessageKindToString(message.kind);
                 line += ":";
                 line += std::to_string(message.value);
                 line += ";";
@@ -59,10 +99,10 @@ namespace
         for (const dragongod::FrameTraceEvent& event : trace) {
             serialized.push_back(
                 std::to_string(event.tick) + ":" +
-                std::to_string(static_cast<int>(event.kind)) + ":" +
+                TraceKindToString(event.kind) + ":" +
                 FrameIdToString(event.activeFrame) + ":" +
                 std::to_string(event.framePc) + ":" +
-                std::to_string(static_cast<int>(event.control)) + ":" +
+                FrameControlToString(event.control) + ":" +
                 FrameIdToString(event.targetFrame) + ":" +
                 std::to_string(event.stackDepth));
         }
