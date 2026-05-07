@@ -78,31 +78,31 @@ namespace
 
     [[nodiscard]] std::string FrameIdToString(dragongod::FrameId id)
     {
-        if (id == dragongod::FrameId::RootPushChild) {
+        if (id == dragongod::CanonicalFrameIds::RootPushChild) {
             return "root_push_child";
         }
 
-        if (id == dragongod::FrameId::RootReplace) {
+        if (id == dragongod::CanonicalFrameIds::RootReplace) {
             return "root_replace";
         }
 
-        if (id == dragongod::FrameId::RootWaitThenPush) {
+        if (id == dragongod::CanonicalFrameIds::RootWaitThenPush) {
             return "root_wait_then_push";
         }
 
-        if (id == dragongod::FrameId::RootPushFailingChild) {
+        if (id == dragongod::CanonicalFrameIds::RootPushFailingChild) {
             return "root_push_failing_child";
         }
 
-        if (id == dragongod::FrameId::RootContinueThenComplete) {
+        if (id == dragongod::CanonicalFrameIds::RootContinueThenComplete) {
             return "root_continue_then_complete";
         }
 
-        if (id == dragongod::FrameId::ChildPop) {
+        if (id == dragongod::CanonicalFrameIds::ChildPop) {
             return "child_pop";
         }
 
-        if (id == dragongod::FrameId::ChildFail) {
+        if (id == dragongod::CanonicalFrameIds::ChildFail) {
             return "child_fail";
         }
 
@@ -141,18 +141,18 @@ FACT(M1c_CanonicalFrames_ExecutePushPopAndRestoreParent)
     bool sawRootComplete = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind == dragongod::FrameTraceKind::Push &&
-            event.activeFrame == dragongod::FrameId::RootPushChild &&
-            event.targetFrame == dragongod::FrameId::ChildPop) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RootPushChild &&
+            event.targetFrame == dragongod::CanonicalFrameIds::ChildPop) {
             sawPush = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::Pop &&
-            event.activeFrame == dragongod::FrameId::ChildPop) {
+            event.activeFrame == dragongod::CanonicalFrameIds::ChildPop) {
             sawChildPop = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::TerminalCompleted &&
-            event.activeFrame == dragongod::FrameId::RootPushChild) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RootPushChild) {
             sawRootComplete = true;
         }
     }
@@ -173,18 +173,18 @@ FACT(M1c_Replace_SwapsTopFrameWithoutGhostState)
 
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind == dragongod::FrameTraceKind::Enter &&
-            event.activeFrame == dragongod::FrameId::RootReplace) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RootReplace) {
             ++rootEnterCount;
         }
 
         if (event.kind == dragongod::FrameTraceKind::Enter &&
-            event.activeFrame == dragongod::FrameId::RecoveryComplete) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RecoveryComplete) {
             ++replacementEnterCount;
         }
 
         if (event.kind == dragongod::FrameTraceKind::Replace &&
-            event.activeFrame == dragongod::FrameId::RootReplace &&
-            event.targetFrame == dragongod::FrameId::RecoveryComplete) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RootReplace &&
+            event.targetFrame == dragongod::CanonicalFrameIds::RecoveryComplete) {
             sawReplace = true;
         }
     }
@@ -206,7 +206,7 @@ FACT(M1c_ProgramCounterResumption_IsRealAfterWaitAndReturn)
 
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind != dragongod::FrameTraceKind::Step ||
-            event.activeFrame != dragongod::FrameId::RootWaitThenPush) {
+            event.activeFrame != dragongod::CanonicalFrameIds::RootWaitThenPush) {
             continue;
         }
 
@@ -242,11 +242,11 @@ FACT(M1c_EnterSemantics_AreBoundedPerActivation)
             continue;
         }
 
-        if (event.activeFrame == dragongod::FrameId::RootWaitThenPush) {
+        if (event.activeFrame == dragongod::CanonicalFrameIds::RootWaitThenPush) {
             ++rootEnterCount;
         }
 
-        if (event.activeFrame == dragongod::FrameId::ChildPop) {
+        if (event.activeFrame == dragongod::CanonicalFrameIds::ChildPop) {
             ++childEnterCount;
         }
     }
@@ -266,13 +266,13 @@ FACT(M1c_ChildFailure_IsTerminal_AndStopsStackProgression)
     bool sawTerminalFailed = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::ChildFail &&
+            event.activeFrame == dragongod::CanonicalFrameIds::ChildFail &&
             event.control == dragongod::FrameControlKind::Fail) {
             sawChildFailStep = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::TerminalFailed &&
-            event.activeFrame == dragongod::FrameId::ChildFail) {
+            event.activeFrame == dragongod::CanonicalFrameIds::ChildFail) {
             sawTerminalFailed = true;
         }
     }
@@ -290,7 +290,7 @@ FACT(M1c_CanonicalVerbs_IncludeContinue)
     bool sawCompleteOnPc1 = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind != dragongod::FrameTraceKind::Step ||
-            event.activeFrame != dragongod::FrameId::RootContinueThenComplete) {
+            event.activeFrame != dragongod::CanonicalFrameIds::RootContinueThenComplete) {
             continue;
         }
 
@@ -338,11 +338,11 @@ namespace
 FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryAtSessionConstruction)
 {
     dragongod::FrameRegistry registry;
-    registry.Add(dragongod::FrameId::UtilityActionFallback, &AuthorRootContinueThenComplete);
+    registry.Add(dragongod::CanonicalFrameIds::UtilityActionFallback, &AuthorRootContinueThenComplete);
 
     dragongod::StackFrameRuntimeSession session(dragongod::StackFrameSessionInit{
         .registry = registry,
-        .rootFrame = dragongod::FrameId::UtilityActionFallback,
+        .rootFrame = dragongod::CanonicalFrameIds::UtilityActionFallback,
         .mailboxInput = {}
     });
 
@@ -354,11 +354,11 @@ FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryAtSessionConstruction)
 FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryOnRestore)
 {
     dragongod::FrameRegistry registry;
-    registry.Add(dragongod::FrameId::UtilityActionFallback, &AuthorRootContinueThenComplete);
+    registry.Add(dragongod::CanonicalFrameIds::UtilityActionFallback, &AuthorRootContinueThenComplete);
 
     dragongod::StackFrameRuntimeSession initial(dragongod::StackFrameSessionInit{
         .registry = registry,
-        .rootFrame = dragongod::FrameId::UtilityActionFallback,
+        .rootFrame = dragongod::CanonicalFrameIds::UtilityActionFallback,
         .mailboxInput = {}
     });
 
@@ -370,4 +370,17 @@ FACT(M16a_PublicRegistrySurface_AllowsAuthorOwnedRegistryOnRestore)
 
     ASSERT_TRUE(legA.finalOutcome == dragongod::StackRunOutcome::Continue, "first leg should stop after continue phase");
     ASSERT_TRUE(legB.finalOutcome == dragongod::StackRunOutcome::Completed, "restored session should complete with caller-provided registry");
+}
+
+FACT(M17c_FrameRegistry_DomainScopedIdsDoNotCollideAcrossDomains)
+{
+    constexpr dragongod::FrameId domainA{ .domain = 100, .local = 1 };
+    constexpr dragongod::FrameId domainB{ .domain = 200, .local = 1 };
+
+    dragongod::FrameRegistry registry;
+    registry.Add(domainA, &AuthorRootContinueThenComplete, "domain_a.root");
+    registry.Add(domainB, &AuthorRootContinueThenComplete, "domain_b.root");
+
+    ASSERT_TRUE(registry.Find(domainA) != nullptr, "domain A frame should resolve");
+    ASSERT_TRUE(registry.Find(domainB) != nullptr, "domain B frame should resolve");
 }

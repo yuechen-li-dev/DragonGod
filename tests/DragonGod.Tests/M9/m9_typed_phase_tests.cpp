@@ -60,7 +60,7 @@ FACT(M9_Stay_KeepsCurrentPhaseUntilMailboxAdvances)
     bool sawStayAtAwaitAlertPhase = false;
     for (const dragongod::FrameTraceEvent& event : result.trace) {
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::RootTypedPhaseMailboxAct &&
+            event.activeFrame == dragongod::CanonicalFrameIds::RootTypedPhaseMailboxAct &&
             event.framePc == 1 &&
             event.control == dragongod::FrameControlKind::Continue) {
             sawStayAtAwaitAlertPhase = true;

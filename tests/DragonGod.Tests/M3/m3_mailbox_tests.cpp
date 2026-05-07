@@ -6,6 +6,11 @@
 
 namespace
 {
+    [[nodiscard]] std::string FrameIdToString(dragongod::FrameId id)
+    {
+        return std::to_string(id.domain) + ":" + std::to_string(id.local);
+    }
+
     namespace Keys
     {
         constexpr dragongod::BbKey<int> FirstMessageValue{ .name = "FirstMessageValue", .slot = 4 };
@@ -55,10 +60,10 @@ namespace
             serialized.push_back(
                 std::to_string(event.tick) + ":" +
                 std::to_string(static_cast<int>(event.kind)) + ":" +
-                std::to_string(static_cast<int>(event.activeFrame)) + ":" +
+                FrameIdToString(event.activeFrame) + ":" +
                 std::to_string(event.framePc) + ":" +
                 std::to_string(static_cast<int>(event.control)) + ":" +
-                std::to_string(static_cast<int>(event.targetFrame)) + ":" +
+                FrameIdToString(event.targetFrame) + ":" +
                 std::to_string(event.stackDepth));
         }
 

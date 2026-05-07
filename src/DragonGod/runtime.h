@@ -22,11 +22,19 @@ namespace dragongod
         Failed
     };
 
-    // These ids currently include canonical proof/demo fixture frames shipped in-repo.
-    // Author-owned domains can define and register their own frame sets through FrameRegistry.
-    enum class FrameId
+        struct FrameId
     {
-        RootPushChild,
+        std::uint64_t domain = 0;
+        std::uint32_t local = 0;
+
+        [[nodiscard]] bool operator==(const FrameId& other) const = default;
+    };
+
+    inline constexpr std::uint64_t CanonicalFrameDomain = 0;
+
+    enum class CanonicalFrameLocalId : std::uint32_t
+    {
+        RootPushChild = 1,
         RootReplace,
         RootWaitThenPush,
         RootPushFailingChild,
@@ -61,7 +69,52 @@ namespace dragongod
         RootTypedPhaseMailboxAct
     };
 
-    enum class FrameControlKind
+    [[nodiscard]] constexpr FrameId CanonicalFrame(CanonicalFrameLocalId id)
+    {
+        return FrameId{
+            .domain = CanonicalFrameDomain,
+            .local = static_cast<std::uint32_t>(id)
+        };
+    }
+
+    namespace CanonicalFrameIds
+    {
+        inline constexpr FrameId RootPushChild = CanonicalFrame(CanonicalFrameLocalId::RootPushChild);
+        inline constexpr FrameId RootReplace = CanonicalFrame(CanonicalFrameLocalId::RootReplace);
+        inline constexpr FrameId RootWaitThenPush = CanonicalFrame(CanonicalFrameLocalId::RootWaitThenPush);
+        inline constexpr FrameId RootPushFailingChild = CanonicalFrame(CanonicalFrameLocalId::RootPushFailingChild);
+        inline constexpr FrameId RootContinueThenComplete = CanonicalFrame(CanonicalFrameLocalId::RootContinueThenComplete);
+        inline constexpr FrameId RootSetThenReadBlackboard = CanonicalFrame(CanonicalFrameLocalId::RootSetThenReadBlackboard);
+        inline constexpr FrameId RootFallbackBranch = CanonicalFrame(CanonicalFrameLocalId::RootFallbackBranch);
+        inline constexpr FrameId RootParentChildBlackboard = CanonicalFrame(CanonicalFrameLocalId::RootParentChildBlackboard);
+        inline constexpr FrameId ChildPop = CanonicalFrame(CanonicalFrameLocalId::ChildPop);
+        inline constexpr FrameId ChildFail = CanonicalFrame(CanonicalFrameLocalId::ChildFail);
+        inline constexpr FrameId ChildReadParentBool = CanonicalFrame(CanonicalFrameLocalId::ChildReadParentBool);
+        inline constexpr FrameId ChildWriteParentCounter = CanonicalFrame(CanonicalFrameLocalId::ChildWriteParentCounter);
+        inline constexpr FrameId RecoveryComplete = CanonicalFrame(CanonicalFrameLocalId::RecoveryComplete);
+        inline constexpr FrameId RootMailboxConsumeFifo = CanonicalFrame(CanonicalFrameLocalId::RootMailboxConsumeFifo);
+        inline constexpr FrameId RootMailboxPeekThenConsume = CanonicalFrame(CanonicalFrameLocalId::RootMailboxPeekThenConsume);
+        inline constexpr FrameId RootMailboxParentPushChildConsume = CanonicalFrame(CanonicalFrameLocalId::RootMailboxParentPushChildConsume);
+        inline constexpr FrameId RootMailboxEnqueueDuringTick = CanonicalFrame(CanonicalFrameLocalId::RootMailboxEnqueueDuringTick);
+        inline constexpr FrameId ChildMailboxConsumeAndPop = CanonicalFrame(CanonicalFrameLocalId::ChildMailboxConsumeAndPop);
+        inline constexpr FrameId RootUtilityHighestScore = CanonicalFrame(CanonicalFrameLocalId::RootUtilityHighestScore);
+        inline constexpr FrameId RootUtilityHysteresis = CanonicalFrame(CanonicalFrameLocalId::RootUtilityHysteresis);
+        inline constexpr FrameId RootUtilityMinCommit = CanonicalFrame(CanonicalFrameLocalId::RootUtilityMinCommit);
+        inline constexpr FrameId RootUtilityTieBreakKeepCurrent = CanonicalFrame(CanonicalFrameLocalId::RootUtilityTieBreakKeepCurrent);
+        inline constexpr FrameId RootUtilityTieBreakFirstListed = CanonicalFrame(CanonicalFrameLocalId::RootUtilityTieBreakFirstListed);
+        inline constexpr FrameId RootUtilityTieBreakLastListed = CanonicalFrame(CanonicalFrameLocalId::RootUtilityTieBreakLastListed);
+        inline constexpr FrameId UtilityActionPrimary = CanonicalFrame(CanonicalFrameLocalId::UtilityActionPrimary);
+        inline constexpr FrameId UtilityActionSecondary = CanonicalFrame(CanonicalFrameLocalId::UtilityActionSecondary);
+        inline constexpr FrameId UtilityActionFallback = CanonicalFrame(CanonicalFrameLocalId::UtilityActionFallback);
+        inline constexpr FrameId RootActImmediateDeferred = CanonicalFrame(CanonicalFrameLocalId::RootActImmediateDeferred);
+        inline constexpr FrameId RootActOrderedDeferred = CanonicalFrame(CanonicalFrameLocalId::RootActOrderedDeferred);
+        inline constexpr FrameId RootActParentPushChild = CanonicalFrame(CanonicalFrameLocalId::RootActParentPushChild);
+        inline constexpr FrameId ChildActImmediate = CanonicalFrame(CanonicalFrameLocalId::ChildActImmediate);
+        inline constexpr FrameId RootActUtilityDriven = CanonicalFrame(CanonicalFrameLocalId::RootActUtilityDriven);
+        inline constexpr FrameId RootTypedPhaseMailboxAct = CanonicalFrame(CanonicalFrameLocalId::RootTypedPhaseMailboxAct);
+    }
+
+enum class FrameControlKind
     {
         Continue,
         Wait,
@@ -325,14 +378,14 @@ namespace dragongod
         FrameControlKind kind = FrameControlKind::Continue;
         std::uint32_t resumePc = 0;
         std::uint32_t waitTicks = 0;
-        FrameId target = FrameId::RootPushChild;
+        FrameId target = CanonicalFrameIds::RootPushChild;
         int failReason = 0;
         bool stayOnCurrentPc = false;
     };
 
     struct UtilityDecisionCandidateTrace
     {
-        FrameId target = FrameId::RootPushChild;
+        FrameId target = CanonicalFrameIds::RootPushChild;
         float score = 0.0f;
 
         [[nodiscard]] bool operator==(const UtilityDecisionCandidateTrace& other) const = default;
@@ -340,12 +393,12 @@ namespace dragongod
 
     struct UtilityDecisionTraceEntry
     {
-        FrameId decisionFrame = FrameId::RootPushChild;
+        FrameId decisionFrame = CanonicalFrameIds::RootPushChild;
         std::vector<UtilityDecisionCandidateTrace> candidates;
         bool hadCommittedBefore = false;
-        FrameId committedBefore = FrameId::RootPushChild;
+        FrameId committedBefore = CanonicalFrameIds::RootPushChild;
         std::uint32_t committedAgeBefore = 0;
-        FrameId chosen = FrameId::RootPushChild;
+        FrameId chosen = CanonicalFrameIds::RootPushChild;
         bool minCommitBlocked = false;
         bool hysteresisBlocked = false;
         bool tieBreakUsed = false;
@@ -355,9 +408,9 @@ namespace dragongod
 
     struct UtilityMemoryChunkEntry
     {
-        FrameId frame = FrameId::RootPushChild;
+        FrameId frame = CanonicalFrameIds::RootPushChild;
         bool hasCommitted = false;
-        FrameId committed = FrameId::RootPushChild;
+        FrameId committed = CanonicalFrameIds::RootPushChild;
         std::uint32_t age = 0;
 
         [[nodiscard]] bool operator==(const UtilityMemoryChunkEntry& other) const = default;
@@ -417,16 +470,18 @@ namespace dragongod
 
     struct FrameDef
     {
-        FrameId id = FrameId::RootPushChild;
+        FrameId id = CanonicalFrameIds::RootPushChild;
         FrameFn function = nullptr;
+        std::string debugName;
     };
 
     class FrameRegistry
     {
     public:
         // Register caller-owned frame functions for a domain/session.
-        void Add(FrameId id, FrameFn function);
+        void Add(FrameId id, FrameFn function, std::string_view debugName = {});
         [[nodiscard]] FrameFn Find(FrameId id) const;
+        [[nodiscard]] std::string_view FindDebugName(FrameId id) const;
 
     private:
         std::vector<FrameDef> definitions_;
@@ -438,7 +493,7 @@ namespace dragongod
 
         struct UtilityCandidate
         {
-            FrameId target = FrameId::RootPushChild;
+            FrameId target = CanonicalFrameIds::RootPushChild;
             ConsiderationFn consideration = nullptr;
         };
 
@@ -484,10 +539,10 @@ namespace dragongod
     {
         TickIndex tick = 0;
         FrameTraceKind kind = FrameTraceKind::Tick;
-        FrameId activeFrame = FrameId::RootPushChild;
+        FrameId activeFrame = CanonicalFrameIds::RootPushChild;
         std::uint32_t framePc = 0;
         FrameControlKind control = FrameControlKind::Continue;
-        FrameId targetFrame = FrameId::RootPushChild;
+        FrameId targetFrame = CanonicalFrameIds::RootPushChild;
         std::size_t stackDepth = 0;
 
         [[nodiscard]] bool operator==(const FrameTraceEvent& other) const = default;
@@ -495,7 +550,7 @@ namespace dragongod
 
     struct StackFrameChunkEntry
     {
-        FrameId id = FrameId::RootPushChild;
+        FrameId id = CanonicalFrameIds::RootPushChild;
         std::uint32_t pc = 0;
         bool entered = false;
         std::uint32_t remainingWaitTicks = 0;
@@ -562,7 +617,7 @@ namespace dragongod
 
         Origin origin = Origin::CanonicalScenario;
         StackScriptScenario scenario = StackScriptScenario::PushPopComplete;
-        FrameId rootFrame = FrameId::RootPushChild;
+        FrameId rootFrame = CanonicalFrameIds::RootPushChild;
         TickIndex nextTick = 0;
         StackRunOutcome lastOutcome = StackRunOutcome::Continue;
         std::vector<ScheduledMessage> scheduledMessages;
@@ -579,7 +634,7 @@ namespace dragongod
     {
         // Public M16a seam: callers provide registry + explicit root + mailbox seed input.
         FrameRegistry registry;
-        FrameId rootFrame = FrameId::RootPushChild;
+        FrameId rootFrame = CanonicalFrameIds::RootPushChild;
         RuntimeMailboxInput mailboxInput;
     };
 
@@ -606,7 +661,7 @@ namespace dragongod
         [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
 
         StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
-        FrameId rootFrame_ = FrameId::RootPushChild;
+        FrameId rootFrame_ = CanonicalFrameIds::RootPushChild;
         TickIndex nextTick_ = 0;
         StackRunOutcome lastOutcome_ = StackRunOutcome::Continue;
         FrameRegistry registry_;

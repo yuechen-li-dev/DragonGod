@@ -6,6 +6,22 @@
 
 namespace
 {
+    [[nodiscard]] std::string FrameIdToString(dragongod::FrameId id)
+    {
+        return std::to_string(id.domain) + ":" + std::to_string(id.local);
+    }
+
+    [[nodiscard]] dragongod::FrameControl AuthorDomainWaitThenComplete(dragongod::FrameCtx& ctx)
+    {
+        if (ctx.Pc() == 0) {
+            return dragongod::Dg::WaitTicks(1, 1);
+        }
+        if (ctx.Pc() == 1) {
+            return dragongod::Dg::Complete();
+        }
+        return dragongod::Dg::Fail(8123);
+    }
+
     namespace Keys
     {
         constexpr dragongod::BbKey<bool> ChildSawHighSignal{ .name = "ChildSawHighSignal", .slot = 2 };
@@ -24,10 +40,10 @@ namespace
             serialized.push_back(
                 std::to_string(event.tick) + ":" +
                 std::to_string(static_cast<int>(event.kind)) + ":" +
-                std::to_string(static_cast<int>(event.activeFrame)) + ":" +
+                FrameIdToString(event.activeFrame) + ":" +
                 std::to_string(event.framePc) + ":" +
                 std::to_string(static_cast<int>(event.control)) + ":" +
-                std::to_string(static_cast<int>(event.targetFrame)) + ":" +
+                FrameIdToString(event.targetFrame) + ":" +
                 std::to_string(event.stackDepth));
         }
 
@@ -165,14 +181,14 @@ FACT(M4_StackChunk_RestoresPcEnterWaitAndFrameOrder)
     bool sawCompleteAfterRestore = false;
     for (const dragongod::FrameTraceEvent& event : remaining.trace) {
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::RootWaitThenPush &&
+            event.activeFrame == dragongod::CanonicalFrameIds::RootWaitThenPush &&
             event.framePc == 1 &&
             event.control == dragongod::FrameControlKind::Push) {
             sawPushAfterRestore = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::TerminalCompleted &&
-            event.activeFrame == dragongod::FrameId::RootWaitThenPush) {
+            event.activeFrame == dragongod::CanonicalFrameIds::RootWaitThenPush) {
             sawCompleteAfterRestore = true;
         }
     }
@@ -263,7 +279,7 @@ FACT(M4_RuntimeChunkMetadata_ExplicitRootSessionIsExplicit)
 {
     dragongod::StackFrameSessionInit init{
         .registry = dragongod::BuildCanonicalFrameRegistry(),
-        .rootFrame = dragongod::FrameId::RootWaitThenPush,
+        .rootFrame = dragongod::CanonicalFrameIds::RootWaitThenPush,
         .mailboxInput = dragongod::RuntimeMailboxInput{}
     };
 
@@ -271,14 +287,14 @@ FACT(M4_RuntimeChunkMetadata_ExplicitRootSessionIsExplicit)
     const dragongod::RuntimeChunk snapshot = session.Save();
 
     ASSERT_TRUE(snapshot.origin == dragongod::RuntimeChunk::Origin::ExplicitRoot, "author-owned snapshots should record explicit-root origin");
-    ASSERT_TRUE(snapshot.rootFrame == dragongod::FrameId::RootWaitThenPush, "author-owned snapshots should preserve caller-selected root");
+    ASSERT_TRUE(snapshot.rootFrame == dragongod::CanonicalFrameIds::RootWaitThenPush, "author-owned snapshots should preserve caller-selected root");
 }
 
 FACT(M4_RuntimeChunkRestore_ExplicitRootUsesCallerRegistryInsteadOfScenarioMapping)
 {
     dragongod::StackFrameSessionInit init{
         .registry = dragongod::BuildCanonicalFrameRegistry(),
-        .rootFrame = dragongod::FrameId::RootWaitThenPush,
+        .rootFrame = dragongod::CanonicalFrameIds::RootWaitThenPush,
         .mailboxInput = dragongod::RuntimeMailboxInput{}
     };
     dragongod::StackFrameRuntimeSession authorOwned(std::move(init));
@@ -286,7 +302,7 @@ FACT(M4_RuntimeChunkRestore_ExplicitRootUsesCallerRegistryInsteadOfScenarioMappi
     const dragongod::RuntimeChunk snapshot = authorOwned.Save();
 
     ASSERT_TRUE(snapshot.origin == dragongod::RuntimeChunk::Origin::ExplicitRoot, "saved author-owned chunk should retain explicit-root origin");
-    ASSERT_TRUE(snapshot.rootFrame == dragongod::FrameId::RootWaitThenPush, "saved author-owned chunk should keep explicit root");
+    ASSERT_TRUE(snapshot.rootFrame == dragongod::CanonicalFrameIds::RootWaitThenPush, "saved author-owned chunk should keep explicit root");
 
     dragongod::FrameRegistry wrongCanonicalRegistry;
     dragongod::StackFrameRuntimeSession restoredWithWrongRegistry(snapshot, std::move(wrongCanonicalRegistry));
@@ -297,4 +313,32 @@ FACT(M4_RuntimeChunkRestore_ExplicitRootUsesCallerRegistryInsteadOfScenarioMappi
     const dragongod::FrameRunResult resumedCorrect = restoredWithCorrectRegistry.RunForTicks(8);
     ASSERT_TRUE(resumedCorrect.finalOutcome == dragongod::StackRunOutcome::Completed, "restore should continue when caller provides the explicit-root registry");
     ASSERT_EQUAL(static_cast<std::size_t>(1), firstLeg.dirtySlotsByTick.size(), "first leg should still run exactly one tick before snapshot");
+}
+
+FACT(M17c_RuntimeChunkRestore_ExplicitRootRequiresMatchingDomainAndLocalFrameId)
+{
+    constexpr dragongod::FrameId authorRoot{ .domain = 0xABC, .local = 1 };
+
+    dragongod::FrameRegistry authorRegistry;
+    authorRegistry.Add(authorRoot, &AuthorDomainWaitThenComplete);
+
+    dragongod::StackFrameRuntimeSession authorOwned(dragongod::StackFrameSessionInit{
+        .registry = authorRegistry,
+        .rootFrame = authorRoot,
+        .mailboxInput = {}
+    });
+    const dragongod::FrameRunResult legA = authorOwned.RunForTicks(1);
+    const dragongod::RuntimeChunk snapshot = authorOwned.Save();
+
+    dragongod::FrameRegistry wrongDomainRegistry;
+    wrongDomainRegistry.Add(dragongod::FrameId{ .domain = 0xDEF, .local = 1 }, &AuthorDomainWaitThenComplete);
+    dragongod::StackFrameRuntimeSession restoredWrong(snapshot, wrongDomainRegistry);
+    const dragongod::FrameRunResult wrongRun = restoredWrong.RunForTicks(1);
+
+    dragongod::StackFrameRuntimeSession restoredCorrect(snapshot, authorRegistry);
+    const dragongod::FrameRunResult correctRun = restoredCorrect.RunForTicks(1);
+
+    ASSERT_TRUE(legA.finalOutcome == dragongod::StackRunOutcome::Wait, "first author leg should persist a wait boundary");
+    ASSERT_TRUE(wrongRun.finalOutcome == dragongod::StackRunOutcome::Failed, "wrong domain with same local id must not resolve");
+    ASSERT_TRUE(correctRun.finalOutcome != dragongod::StackRunOutcome::Failed, "matching domain+local id should resolve");
 }

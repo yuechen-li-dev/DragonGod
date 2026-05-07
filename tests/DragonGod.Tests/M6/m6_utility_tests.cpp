@@ -77,7 +77,7 @@ FACT(M6_MinCommit_SticksUntilWindowExpires_ThenSwitches)
                 sawMinCommitBlock = true;
             }
 
-            if (!decision.minCommitBlocked && decision.chosen == dragongod::FrameId::UtilityActionSecondary) {
+            if (!decision.minCommitBlocked && decision.chosen == dragongod::CanonicalFrameIds::UtilityActionSecondary) {
                 sawSwitchAfterWindow = true;
             }
         }
@@ -153,11 +153,11 @@ FACT(M6_UtilityDecisions_CoexistWithStackDirtyAndMailboxSemantics)
     bool sawUtilityPush = false;
     bool sawUtilityPop = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
-        if (event.kind == dragongod::FrameTraceKind::Push && event.targetFrame == dragongod::FrameId::UtilityActionSecondary) {
+        if (event.kind == dragongod::FrameTraceKind::Push && event.targetFrame == dragongod::CanonicalFrameIds::UtilityActionSecondary) {
             sawUtilityPush = true;
         }
 
-        if (event.kind == dragongod::FrameTraceKind::Pop && event.activeFrame == dragongod::FrameId::UtilityActionSecondary) {
+        if (event.kind == dragongod::FrameTraceKind::Pop && event.activeFrame == dragongod::CanonicalFrameIds::UtilityActionSecondary) {
             sawUtilityPop = true;
         }
     }
