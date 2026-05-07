@@ -554,7 +554,15 @@ namespace dragongod
 
     struct RuntimeChunk
     {
+        enum class Origin
+        {
+            CanonicalScenario,
+            ExplicitRoot
+        };
+
+        Origin origin = Origin::CanonicalScenario;
         StackScriptScenario scenario = StackScriptScenario::PushPopComplete;
+        FrameId rootFrame = FrameId::RootPushChild;
         TickIndex nextTick = 0;
         StackRunOutcome lastOutcome = StackRunOutcome::Continue;
         std::vector<ScheduledMessage> scheduledMessages;
@@ -592,11 +600,13 @@ namespace dragongod
         [[nodiscard]] FrameRunResult RunForTicks(TickIndex tickCount);
 
     private:
+        RuntimeChunk::Origin origin_ = RuntimeChunk::Origin::CanonicalScenario;
         [[nodiscard]] static FrameRegistry BuildRegistry();
         [[nodiscard]] static FrameId RootFrameForScenario(StackScriptScenario scenario);
         [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
 
         StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
+        FrameId rootFrame_ = FrameId::RootPushChild;
         TickIndex nextTick_ = 0;
         StackRunOutcome lastOutcome_ = StackRunOutcome::Continue;
         FrameRegistry registry_;

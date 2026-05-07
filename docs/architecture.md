@@ -122,6 +122,10 @@ DragonGod saves and restores state through **chunks** — plain data structures 
 
 A `RuntimeChunk` contains:
 
+- session-origin metadata:
+  - `origin` (`CanonicalScenario` or `ExplicitRoot`)
+  - `scenario` (canonical-origin meaning)
+  - `rootFrame` (explicit-root meaning; canonical root also recorded for clarity)
 - the stack (each frame's id, current pc, entered flag, remaining wait ticks)
 - the full blackboard (all key-value pairs)
 - the mailbox (both visible and staged queues)

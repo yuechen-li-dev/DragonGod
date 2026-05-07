@@ -245,3 +245,56 @@ FACT(M4_RepeatedSnapshotRestoreRuns_AreDeterministic)
     ASSERT_TRUE(runASecondLeg.finalBlackboard.GetOr(Keys::ChildSawHighSignal, false), "restored run should continue through canonical child frame logic");
     ASSERT_EQUAL(5, runASecondLeg.finalBlackboard.GetOr(Keys::Counter, 0), "restored run should preserve canonical parent-child blackboard semantics");
 }
+
+FACT(M4_RuntimeChunkMetadata_CanonicalScenarioSessionIsExplicit)
+{
+    const dragongod::StackScriptScenario scenario = dragongod::StackScriptScenario::WaitPushPopComplete;
+    dragongod::StackFrameRuntimeSession session(scenario, dragongod::RuntimeMailboxInput{});
+    const dragongod::RuntimeChunk snapshot = session.Save();
+
+    ASSERT_TRUE(snapshot.origin == dragongod::RuntimeChunk::Origin::CanonicalScenario, "canonical session snapshots should record canonical origin");
+    ASSERT_TRUE(snapshot.scenario == scenario, "canonical session snapshots should preserve scenario metadata");
+    ASSERT_TRUE(
+        snapshot.rootFrame == dragongod::CanonicalScenarioRootFrame(scenario),
+        "canonical session snapshots should preserve canonical root metadata");
+}
+
+FACT(M4_RuntimeChunkMetadata_ExplicitRootSessionIsExplicit)
+{
+    dragongod::StackFrameSessionInit init{
+        .registry = dragongod::BuildCanonicalFrameRegistry(),
+        .rootFrame = dragongod::FrameId::RootWaitThenPush,
+        .mailboxInput = dragongod::RuntimeMailboxInput{}
+    };
+
+    dragongod::StackFrameRuntimeSession session(std::move(init));
+    const dragongod::RuntimeChunk snapshot = session.Save();
+
+    ASSERT_TRUE(snapshot.origin == dragongod::RuntimeChunk::Origin::ExplicitRoot, "author-owned snapshots should record explicit-root origin");
+    ASSERT_TRUE(snapshot.rootFrame == dragongod::FrameId::RootWaitThenPush, "author-owned snapshots should preserve caller-selected root");
+}
+
+FACT(M4_RuntimeChunkRestore_ExplicitRootUsesCallerRegistryInsteadOfScenarioMapping)
+{
+    dragongod::StackFrameSessionInit init{
+        .registry = dragongod::BuildCanonicalFrameRegistry(),
+        .rootFrame = dragongod::FrameId::RootWaitThenPush,
+        .mailboxInput = dragongod::RuntimeMailboxInput{}
+    };
+    dragongod::StackFrameRuntimeSession authorOwned(std::move(init));
+    const dragongod::FrameRunResult firstLeg = authorOwned.RunForTicks(1);
+    const dragongod::RuntimeChunk snapshot = authorOwned.Save();
+
+    ASSERT_TRUE(snapshot.origin == dragongod::RuntimeChunk::Origin::ExplicitRoot, "saved author-owned chunk should retain explicit-root origin");
+    ASSERT_TRUE(snapshot.rootFrame == dragongod::FrameId::RootWaitThenPush, "saved author-owned chunk should keep explicit root");
+
+    dragongod::FrameRegistry wrongCanonicalRegistry;
+    dragongod::StackFrameRuntimeSession restoredWithWrongRegistry(snapshot, std::move(wrongCanonicalRegistry));
+    const dragongod::FrameRunResult resumedWrong = restoredWithWrongRegistry.RunForTicks(4);
+    ASSERT_TRUE(resumedWrong.finalOutcome == dragongod::StackRunOutcome::Failed, "restore should fail when caller provides a registry missing the explicit-root frames");
+
+    dragongod::StackFrameRuntimeSession restoredWithCorrectRegistry(snapshot, dragongod::BuildCanonicalFrameRegistry());
+    const dragongod::FrameRunResult resumedCorrect = restoredWithCorrectRegistry.RunForTicks(8);
+    ASSERT_TRUE(resumedCorrect.finalOutcome == dragongod::StackRunOutcome::Completed, "restore should continue when caller provides the explicit-root registry");
+    ASSERT_EQUAL(static_cast<std::size_t>(1), firstLeg.dirtySlotsByTick.size(), "first leg should still run exactly one tick before snapshot");
+}

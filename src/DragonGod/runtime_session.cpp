@@ -110,7 +110,9 @@ namespace dragongod
             .mailboxInput = mailboxInput
         })
     {
+        origin_ = RuntimeChunk::Origin::CanonicalScenario;
         scenario_ = scenario;
+        rootFrame_ = RootFrameForScenario(scenario);
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(StackFrameSessionInit init)
@@ -120,6 +122,8 @@ namespace dragongod
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
+        origin_ = RuntimeChunk::Origin::ExplicitRoot;
+        rootFrame_ = init.rootFrame;
         stack_.push_back(StackFrameChunkEntry{ .id = init.rootFrame });
         for (const Message& message : init.mailboxInput.initialMessages) {
             mailbox_.Enqueue(message);
@@ -127,18 +131,25 @@ namespace dragongod
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk)
+        // Canonical restore path keeps legacy convenience behavior.
         : StackFrameRuntimeSession(chunk, BuildRegistry())
     {
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk, FrameRegistry registry)
-        : scenario_(chunk.scenario)
+        : origin_(chunk.origin)
+        , scenario_(chunk.scenario)
+        , rootFrame_(chunk.rootFrame)
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
         , registry_(std::move(registry))
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
+        if (chunk.origin == RuntimeChunk::Origin::CanonicalScenario) {
+            rootFrame_ = RootFrameForScenario(chunk.scenario);
+        }
+
         stack_ = chunk.stack.frames;
         actRuntime_->ImportDeferredChunk(chunk.deferredActuation);
         utilityMemory_->ImportChunk(chunk.utilityMemory);
@@ -177,7 +188,9 @@ namespace dragongod
         // M4 persistence boundary:
         // Save() is valid between ticks after all effects of tick N are complete and before tick N+1 starts.
         return RuntimeChunk{
+            .origin = origin_,
             .scenario = scenario_,
+            .rootFrame = rootFrame_,
             .nextTick = nextTick_,
             .lastOutcome = lastOutcome_,
             .scheduledMessages = scheduledMessages_,
