@@ -1,5 +1,7 @@
 #include "runtime_internal.h"
 
+#include <cassert>
+
 namespace dragongod
 {
     namespace
@@ -167,20 +169,21 @@ namespace dragongod
     {
     }
 
+    [[nodiscard]] bool ActCtx::HasRuntime() const
+    {
+        return runtime_ != nullptr;
+    }
+
     void ActCtx::Immediate(ActId id)
     {
-        if (runtime_ == nullptr) {
-            return;
-        }
+        assert(runtime_ != nullptr && "ActCtx requires attached ActRuntime for actuation emission");
 
         runtime_->EmitImmediate(id);
     }
 
     void ActCtx::Deferred(ActId id, std::uint32_t delayTicks)
     {
-        if (runtime_ == nullptr) {
-            return;
-        }
+        assert(runtime_ != nullptr && "ActCtx requires attached ActRuntime for actuation emission");
 
         runtime_->ScheduleDeferred(id, delayTicks);
     }
@@ -453,8 +456,11 @@ namespace dragongod
         boolEntries_.clear();
         intEntries_.clear();
         dirtySlots_.clear();
+        slotMetadata_.clear();
+        lastSlotCollision_.reset();
 
         for (const BoolChunkEntry& entry : chunk.boolEntries) {
+            ValidateKey<bool>(BbKey<bool>{ .name = "", .slot = entry.slot });
             boolEntries_.push_back(BoolEntry{
                 .slot = entry.slot,
                 .value = entry.value
@@ -462,6 +468,7 @@ namespace dragongod
         }
 
         for (const IntChunkEntry& entry : chunk.intEntries) {
+            ValidateKey<int>(BbKey<int>{ .name = "", .slot = entry.slot });
             intEntries_.push_back(IntEntry{
                 .slot = entry.slot,
                 .value = entry.value
@@ -489,6 +496,44 @@ namespace dragongod
         }
 
         return false;
+    }
+
+    [[nodiscard]] bool Blackboard::HasSlotCollision() const
+    {
+        return lastSlotCollision_.has_value();
+    }
+
+    [[nodiscard]] std::optional<Blackboard::SlotCollision> Blackboard::LastSlotCollision() const
+    {
+        return lastSlotCollision_;
+    }
+
+    template <typename T>
+    void Blackboard::ValidateKey(BbKey<T> key)
+    {
+        const BbValueKind kind = ValueKindFor<T>();
+        for (const BbSlotMetadata& metadata : slotMetadata_) {
+            if (metadata.slot != key.slot) {
+                continue;
+            }
+            const bool eitherUnnamed = metadata.name.empty() || key.name.empty();
+            if (metadata.kind != kind || (!eitherUnnamed && metadata.name != key.name)) {
+                lastSlotCollision_ = SlotCollision{
+                    .slot = key.slot,
+                    .firstName = metadata.name,
+                    .secondName = key.name,
+                    .firstWasBool = metadata.kind == BbValueKind::Bool,
+                    .secondWasBool = kind == BbValueKind::Bool
+                };
+            }
+            return;
+        }
+
+        slotMetadata_.push_back(BbSlotMetadata{
+            .slot = key.slot,
+            .name = key.name,
+            .kind = kind
+        });
     }
 
     void FrameRegistry::Add(FrameId id, FrameFn function)

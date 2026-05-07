@@ -1,6 +1,7 @@
 #include "../../Marionette/test_harness.h"
 #include "../../../src/DragonGod/runtime_compat.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -321,4 +322,56 @@ FACT(M2b_Blackboard_ValueReadsRemainCorrect_WithDirtyTrackingEnabled)
     ASSERT_EQUAL(7, blackboard.GetOr(Keys::Counter, 0), "dirty tracking must not alter int storage/read semantics");
     ASSERT_TRUE(blackboard.IsDirty(Keys::HighSignal), "Set should mark key dirty in direct blackboard usage");
     ASSERT_TRUE(blackboard.IsDirty(Keys::Counter), "Set should mark key dirty in direct blackboard usage");
+}
+
+FACT(M17a_Blackboard_SameSlotAndSameKey_DoesNotFlagCollision)
+{
+    dragongod::Blackboard blackboard;
+    constexpr dragongod::BbKey<int> counterA{ .name = "Counter", .slot = 99 };
+
+    blackboard.Set(counterA, 10);
+    blackboard.Set(counterA, 42);
+
+    ASSERT_FALSE(blackboard.HasSlotCollision(), "same key metadata reused on same slot should not be flagged as collision");
+}
+
+FACT(M17a_Blackboard_SameSlotDifferentName_IsDiagnosed)
+{
+    dragongod::Blackboard blackboard;
+    constexpr dragongod::BbKey<int> counterA{ .name = "CounterA", .slot = 77 };
+    constexpr dragongod::BbKey<int> counterB{ .name = "CounterB", .slot = 77 };
+
+    blackboard.Set(counterA, 1);
+    blackboard.Set(counterB, 2);
+
+    ASSERT_TRUE(blackboard.HasSlotCollision(), "same slot with conflicting names should be diagnosed");
+    const std::optional<dragongod::Blackboard::SlotCollision> collision = blackboard.LastSlotCollision();
+    ASSERT_TRUE(collision.has_value(), "collision metadata should be preserved");
+    if (!collision.has_value()) {
+        return;
+    }
+
+    ASSERT_EQUAL(static_cast<std::uint32_t>(77), collision->slot, "collision should report reused slot");
+    ASSERT_EQUAL(std::string("CounterA"), std::string(collision->firstName), "collision should report first seen key name");
+    ASSERT_EQUAL(std::string("CounterB"), std::string(collision->secondName), "collision should report conflicting key name");
+}
+
+FACT(M17a_Blackboard_SameSlotDifferentType_IsDiagnosed)
+{
+    dragongod::Blackboard blackboard;
+    constexpr dragongod::BbKey<bool> boolKey{ .name = "Flag", .slot = 88 };
+    constexpr dragongod::BbKey<int> intKey{ .name = "Flag", .slot = 88 };
+
+    blackboard.Set(boolKey, true);
+    blackboard.Set(intKey, 9);
+
+    ASSERT_TRUE(blackboard.HasSlotCollision(), "same slot with different value kinds should be diagnosed");
+    const std::optional<dragongod::Blackboard::SlotCollision> collision = blackboard.LastSlotCollision();
+    ASSERT_TRUE(collision.has_value(), "type-collision metadata should be available");
+    if (!collision.has_value()) {
+        return;
+    }
+
+    ASSERT_TRUE(collision->firstWasBool, "first key kind should identify bool");
+    ASSERT_FALSE(collision->secondWasBool, "second key kind should identify int");
 }
