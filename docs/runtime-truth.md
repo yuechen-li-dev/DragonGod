@@ -239,7 +239,10 @@ Persistence uses `RuntimeChunk` and is explicitly chunk-based (not object graph 
 
 Persisted fields include:
 
-- scenario, `nextTick`, `lastOutcome`
+- origin (`CanonicalScenario` or `ExplicitRoot`)
+- scenario (meaningful for canonical-origin chunks)
+- root frame id (meaningful for explicit-root chunks; canonical chunks also store resolved root for clarity)
+- `nextTick`, `lastOutcome`
 - scheduled messages
 - stack frames (`id`, `pc`, `entered`, `remainingWaitTicks`)
 - utility memory entries (committed target + age)
