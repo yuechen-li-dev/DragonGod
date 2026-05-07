@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -149,6 +150,7 @@ namespace dragongod
     public:
         ActCtx();
         explicit ActCtx(ActRuntime& runtime);
+        [[nodiscard]] bool HasRuntime() const;
         void Immediate(ActId id);
         void Deferred(ActId id, std::uint32_t delayTicks);
 
@@ -244,6 +246,14 @@ namespace dragongod
 
             [[nodiscard]] bool operator==(const Chunk& other) const = default;
         };
+        struct SlotCollision
+        {
+            std::uint32_t slot = 0;
+            std::string_view firstName{};
+            std::string_view secondName{};
+            bool firstWasBool = false;
+            bool secondWasBool = false;
+        };
 
         template <typename T>
         void Set(BbKey<T> key, const T& value);
@@ -261,8 +271,23 @@ namespace dragongod
         void ClearDirty();
         [[nodiscard]] Chunk ExportChunk() const;
         void ImportChunk(const Chunk& chunk);
+        [[nodiscard]] bool HasSlotCollision() const;
+        [[nodiscard]] std::optional<SlotCollision> LastSlotCollision() const;
 
     private:
+        enum class BbValueKind
+        {
+            Bool,
+            Int
+        };
+
+        struct BbSlotMetadata
+        {
+            std::uint32_t slot = 0;
+            std::string_view name{};
+            BbValueKind kind = BbValueKind::Bool;
+        };
+
         struct BoolEntry
         {
             std::uint32_t slot = 0;
@@ -280,6 +305,10 @@ namespace dragongod
 
         template <typename T>
         void UpsertValue(std::uint32_t slot, const T& value);
+        template <typename T>
+        [[nodiscard]] static BbValueKind ValueKindFor();
+        template <typename T>
+        void ValidateKey(BbKey<T> key);
 
         void MarkDirty(std::uint32_t slot);
         [[nodiscard]] bool HasDirtySlot(std::uint32_t slot) const;
@@ -287,6 +316,8 @@ namespace dragongod
         std::vector<BoolEntry> boolEntries_;
         std::vector<IntEntry> intEntries_;
         std::vector<std::uint32_t> dirtySlots_;
+        std::vector<BbSlotMetadata> slotMetadata_;
+        std::optional<SlotCollision> lastSlotCollision_;
     };
 
     struct FrameControl
@@ -606,6 +637,7 @@ namespace dragongod
     void Blackboard::Set(BbKey<T> key, const T& value)
     {
         static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        ValidateKey<T>(key);
         UpsertValue<T>(key.slot, value);
         MarkDirty(key.slot);
     }
@@ -640,6 +672,18 @@ namespace dragongod
     {
         static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
         return HasDirtySlot(key.slot);
+    }
+
+    template <>
+    [[nodiscard]] inline Blackboard::BbValueKind Blackboard::ValueKindFor<bool>()
+    {
+        return BbValueKind::Bool;
+    }
+
+    template <>
+    [[nodiscard]] inline Blackboard::BbValueKind Blackboard::ValueKindFor<int>()
+    {
+        return BbValueKind::Int;
     }
 
     template <typename TEnum>

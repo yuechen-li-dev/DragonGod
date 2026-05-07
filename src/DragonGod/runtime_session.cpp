@@ -6,6 +6,57 @@ namespace dragongod
 {
     namespace
     {
+        [[nodiscard]] const char* StackRunOutcomeName(StackRunOutcome outcome)
+        {
+            switch (outcome) {
+            case StackRunOutcome::Continue: return "continue";
+            case StackRunOutcome::Wait: return "wait";
+            case StackRunOutcome::Completed: return "completed";
+            case StackRunOutcome::Failed: return "failed";
+            }
+            return "unknown";
+        }
+
+        [[nodiscard]] const char* FrameIdName(FrameId id)
+        {
+            switch (id) {
+            case FrameId::RootPushChild: return "root_push_child";
+            case FrameId::RootReplace: return "root_replace";
+            case FrameId::RootWaitThenPush: return "root_wait_then_push";
+            case FrameId::RootPushFailingChild: return "root_push_failing_child";
+            case FrameId::RootContinueThenComplete: return "root_continue_then_complete";
+            case FrameId::RootSetThenReadBlackboard: return "root_set_then_read_blackboard";
+            case FrameId::RootFallbackBranch: return "root_fallback_branch";
+            case FrameId::RootParentChildBlackboard: return "root_parent_child_blackboard";
+            case FrameId::ChildPop: return "child_pop";
+            case FrameId::ChildFail: return "child_fail";
+            case FrameId::ChildReadParentBool: return "child_read_parent_bool";
+            case FrameId::ChildWriteParentCounter: return "child_write_parent_counter";
+            case FrameId::RecoveryComplete: return "recovery_complete";
+            case FrameId::RootMailboxConsumeFifo: return "root_mailbox_consume_fifo";
+            case FrameId::RootMailboxPeekThenConsume: return "root_mailbox_peek_then_consume";
+            case FrameId::RootMailboxParentPushChildConsume: return "root_mailbox_parent_push_child_consume";
+            case FrameId::RootMailboxEnqueueDuringTick: return "root_mailbox_enqueue_during_tick";
+            case FrameId::ChildMailboxConsumeAndPop: return "child_mailbox_consume_and_pop";
+            case FrameId::RootUtilityHighestScore: return "root_utility_highest_score";
+            case FrameId::RootUtilityHysteresis: return "root_utility_hysteresis";
+            case FrameId::RootUtilityMinCommit: return "root_utility_min_commit";
+            case FrameId::RootUtilityTieBreakKeepCurrent: return "root_utility_tie_break_keep_current";
+            case FrameId::RootUtilityTieBreakFirstListed: return "root_utility_tie_break_first_listed";
+            case FrameId::RootUtilityTieBreakLastListed: return "root_utility_tie_break_last_listed";
+            case FrameId::UtilityActionPrimary: return "utility_action_primary";
+            case FrameId::UtilityActionSecondary: return "utility_action_secondary";
+            case FrameId::UtilityActionFallback: return "utility_action_fallback";
+            case FrameId::RootActImmediateDeferred: return "root_act_immediate_deferred";
+            case FrameId::RootActOrderedDeferred: return "root_act_ordered_deferred";
+            case FrameId::RootActParentPushChild: return "root_act_parent_push_child";
+            case FrameId::ChildActImmediate: return "child_act_immediate";
+            case FrameId::RootActUtilityDriven: return "root_act_utility_driven";
+            case FrameId::RootTypedPhaseMailboxAct: return "root_typed_phase_mailbox_act";
+            }
+            return "unknown_frame";
+        }
+
         void EmitTrace(
             FrameRunResult& result,
             TickIndex tick,
@@ -349,11 +400,11 @@ namespace dragongod
         for (const TickTraceEntry& entry : trace) {
             std::string line;
             line += "tick=" + std::to_string(entry.tick);
-            line += "|outcome=" + std::to_string(static_cast<int>(entry.outcome));
+            line += "|outcome=" + std::string(StackRunOutcomeName(entry.outcome));
             line += "|stack=";
 
             for (const StackFrameChunkEntry& frame : entry.stack) {
-                line += std::to_string(static_cast<int>(frame.id));
+                line += FrameIdName(frame.id);
                 line += ",";
                 line += std::to_string(frame.pc);
                 line += ",";
@@ -379,9 +430,9 @@ namespace dragongod
 
             line += "|utility=";
             for (const UtilityDecisionTraceEntry& decision : entry.utilityDecisions) {
-                line += std::to_string(static_cast<int>(decision.decisionFrame));
+                line += FrameIdName(decision.decisionFrame);
                 line += ">";
-                line += std::to_string(static_cast<int>(decision.chosen));
+                line += FrameIdName(decision.chosen);
                 line += ":";
                 line += decision.minCommitBlocked ? "m1" : "m0";
                 line += ",";
@@ -390,7 +441,7 @@ namespace dragongod
                 line += decision.tieBreakUsed ? "t1" : "t0";
                 line += "[";
                 for (const UtilityDecisionCandidateTrace& candidate : decision.candidates) {
-                    line += std::to_string(static_cast<int>(candidate.target));
+                    line += FrameIdName(candidate.target);
                     line += "=";
                     line += std::to_string(candidate.score);
                     line += ";";
