@@ -1,4 +1,5 @@
 #include <utility>
+#include <string>
 
 #include "runtime_internal.h"
 
@@ -17,44 +18,32 @@ namespace dragongod
             return "unknown";
         }
 
-        [[nodiscard]] const char* FrameIdName(FrameId id)
+        [[nodiscard]] const char* CanonicalFrameName(FrameId id)
         {
-            switch (id) {
-            case FrameId::RootPushChild: return "root_push_child";
-            case FrameId::RootReplace: return "root_replace";
-            case FrameId::RootWaitThenPush: return "root_wait_then_push";
-            case FrameId::RootPushFailingChild: return "root_push_failing_child";
-            case FrameId::RootContinueThenComplete: return "root_continue_then_complete";
-            case FrameId::RootSetThenReadBlackboard: return "root_set_then_read_blackboard";
-            case FrameId::RootFallbackBranch: return "root_fallback_branch";
-            case FrameId::RootParentChildBlackboard: return "root_parent_child_blackboard";
-            case FrameId::ChildPop: return "child_pop";
-            case FrameId::ChildFail: return "child_fail";
-            case FrameId::ChildReadParentBool: return "child_read_parent_bool";
-            case FrameId::ChildWriteParentCounter: return "child_write_parent_counter";
-            case FrameId::RecoveryComplete: return "recovery_complete";
-            case FrameId::RootMailboxConsumeFifo: return "root_mailbox_consume_fifo";
-            case FrameId::RootMailboxPeekThenConsume: return "root_mailbox_peek_then_consume";
-            case FrameId::RootMailboxParentPushChildConsume: return "root_mailbox_parent_push_child_consume";
-            case FrameId::RootMailboxEnqueueDuringTick: return "root_mailbox_enqueue_during_tick";
-            case FrameId::ChildMailboxConsumeAndPop: return "child_mailbox_consume_and_pop";
-            case FrameId::RootUtilityHighestScore: return "root_utility_highest_score";
-            case FrameId::RootUtilityHysteresis: return "root_utility_hysteresis";
-            case FrameId::RootUtilityMinCommit: return "root_utility_min_commit";
-            case FrameId::RootUtilityTieBreakKeepCurrent: return "root_utility_tie_break_keep_current";
-            case FrameId::RootUtilityTieBreakFirstListed: return "root_utility_tie_break_first_listed";
-            case FrameId::RootUtilityTieBreakLastListed: return "root_utility_tie_break_last_listed";
-            case FrameId::UtilityActionPrimary: return "utility_action_primary";
-            case FrameId::UtilityActionSecondary: return "utility_action_secondary";
-            case FrameId::UtilityActionFallback: return "utility_action_fallback";
-            case FrameId::RootActImmediateDeferred: return "root_act_immediate_deferred";
-            case FrameId::RootActOrderedDeferred: return "root_act_ordered_deferred";
-            case FrameId::RootActParentPushChild: return "root_act_parent_push_child";
-            case FrameId::ChildActImmediate: return "child_act_immediate";
-            case FrameId::RootActUtilityDriven: return "root_act_utility_driven";
-            case FrameId::RootTypedPhaseMailboxAct: return "root_typed_phase_mailbox_act";
+            if (id == CanonicalFrameIds::RootPushChild) return "root_push_child";
+            if (id == CanonicalFrameIds::RootReplace) return "root_replace";
+            if (id == CanonicalFrameIds::RootWaitThenPush) return "root_wait_then_push";
+            return nullptr;
+        }
+
+        [[nodiscard]] std::string FrameIdName(FrameId id, const FrameRegistry& registry)
+        {
+            const std::string_view debugName = registry.FindDebugName(id);
+            if (!debugName.empty()) {
+                return std::string(debugName);
             }
-            return "unknown_frame";
+
+            if (const char* canonical = CanonicalFrameName(id); canonical != nullptr) {
+                return canonical;
+            }
+
+            return std::to_string(id.domain) + ":" + std::to_string(id.local);
+        }
+
+        [[nodiscard]] std::string FrameIdName(FrameId id)
+        {
+            FrameRegistry emptyRegistry;
+            return FrameIdName(id, emptyRegistry);
         }
 
         void EmitTrace(

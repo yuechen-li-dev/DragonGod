@@ -86,51 +86,51 @@ namespace
 
     [[nodiscard]] std::string FrameIdToString(dragongod::FrameId id)
     {
-        if (id == dragongod::FrameId::RootPushChild) {
+        if (id == dragongod::CanonicalFrameIds::RootPushChild) {
             return "root_push_child";
         }
 
-        if (id == dragongod::FrameId::RootReplace) {
+        if (id == dragongod::CanonicalFrameIds::RootReplace) {
             return "root_replace";
         }
 
-        if (id == dragongod::FrameId::RootWaitThenPush) {
+        if (id == dragongod::CanonicalFrameIds::RootWaitThenPush) {
             return "root_wait_then_push";
         }
 
-        if (id == dragongod::FrameId::RootPushFailingChild) {
+        if (id == dragongod::CanonicalFrameIds::RootPushFailingChild) {
             return "root_push_failing_child";
         }
 
-        if (id == dragongod::FrameId::RootContinueThenComplete) {
+        if (id == dragongod::CanonicalFrameIds::RootContinueThenComplete) {
             return "root_continue_then_complete";
         }
 
-        if (id == dragongod::FrameId::RootSetThenReadBlackboard) {
+        if (id == dragongod::CanonicalFrameIds::RootSetThenReadBlackboard) {
             return "root_set_then_read_blackboard";
         }
 
-        if (id == dragongod::FrameId::RootFallbackBranch) {
+        if (id == dragongod::CanonicalFrameIds::RootFallbackBranch) {
             return "root_fallback_branch";
         }
 
-        if (id == dragongod::FrameId::RootParentChildBlackboard) {
+        if (id == dragongod::CanonicalFrameIds::RootParentChildBlackboard) {
             return "root_parent_child_blackboard";
         }
 
-        if (id == dragongod::FrameId::ChildPop) {
+        if (id == dragongod::CanonicalFrameIds::ChildPop) {
             return "child_pop";
         }
 
-        if (id == dragongod::FrameId::ChildFail) {
+        if (id == dragongod::CanonicalFrameIds::ChildFail) {
             return "child_fail";
         }
 
-        if (id == dragongod::FrameId::ChildReadParentBool) {
+        if (id == dragongod::CanonicalFrameIds::ChildReadParentBool) {
             return "child_read_parent_bool";
         }
 
-        if (id == dragongod::FrameId::ChildWriteParentCounter) {
+        if (id == dragongod::CanonicalFrameIds::ChildWriteParentCounter) {
             return "child_write_parent_counter";
         }
 
@@ -179,7 +179,7 @@ FACT(M2a_Blackboard_TypedSetAndRead_WorksInsideCanonicalFrames)
     bool sawCompleteAtPc1 = false;
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind != dragongod::FrameTraceKind::Step ||
-            event.activeFrame != dragongod::FrameId::RootSetThenReadBlackboard) {
+            event.activeFrame != dragongod::CanonicalFrameIds::RootSetThenReadBlackboard) {
             continue;
         }
 
@@ -221,19 +221,19 @@ FACT(M2a_Blackboard_StateInfluencesControlFlowAcrossParentAndChild)
 
     for (const dragongod::FrameTraceEvent& event : run.trace) {
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::ChildReadParentBool &&
+            event.activeFrame == dragongod::CanonicalFrameIds::ChildReadParentBool &&
             event.control == dragongod::FrameControlKind::Pop) {
             sawChildReadPop = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::ChildWriteParentCounter &&
+            event.activeFrame == dragongod::CanonicalFrameIds::ChildWriteParentCounter &&
             event.control == dragongod::FrameControlKind::Pop) {
             sawChildWritePop = true;
         }
 
         if (event.kind == dragongod::FrameTraceKind::Step &&
-            event.activeFrame == dragongod::FrameId::RootParentChildBlackboard &&
+            event.activeFrame == dragongod::CanonicalFrameIds::RootParentChildBlackboard &&
             event.framePc == 2 &&
             event.control == dragongod::FrameControlKind::Complete) {
             sawRootCompleteAtPc2 = true;

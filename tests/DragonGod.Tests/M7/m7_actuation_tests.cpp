@@ -157,11 +157,11 @@ FACT(M7_ActuationCoexistsWithStackBlackboardMailboxAndUtility)
     bool sawPush = false;
     bool sawPop = false;
     for (const dragongod::FrameTraceEvent& event : stackMailboxRun.trace) {
-        if (event.kind == dragongod::FrameTraceKind::Push && event.targetFrame == dragongod::FrameId::ChildActImmediate) {
+        if (event.kind == dragongod::FrameTraceKind::Push && event.targetFrame == dragongod::CanonicalFrameIds::ChildActImmediate) {
             sawPush = true;
         }
 
-        if (event.kind == dragongod::FrameTraceKind::Pop && event.activeFrame == dragongod::FrameId::ChildActImmediate) {
+        if (event.kind == dragongod::FrameTraceKind::Pop && event.activeFrame == dragongod::CanonicalFrameIds::ChildActImmediate) {
             sawPop = true;
         }
     }

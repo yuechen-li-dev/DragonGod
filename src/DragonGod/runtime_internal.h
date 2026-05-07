@@ -9,9 +9,9 @@ namespace dragongod
     public:
         struct Entry
         {
-            FrameId frame = FrameId::RootPushChild;
+            FrameId frame = CanonicalFrameIds::RootPushChild;
             bool hasCommitted = false;
-            FrameId committed = FrameId::RootPushChild;
+            FrameId committed = CanonicalFrameIds::RootPushChild;
             std::uint32_t age = 0;
         };
 

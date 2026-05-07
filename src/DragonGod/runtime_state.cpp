@@ -536,12 +536,24 @@ namespace dragongod
         });
     }
 
-    void FrameRegistry::Add(FrameId id, FrameFn function)
+    void FrameRegistry::Add(FrameId id, FrameFn function, std::string_view debugName)
     {
         // Registry contents are caller-owned domain wiring (canonical fixtures are just one caller).
+        for (const FrameDef& definition : definitions_) {
+            if (definition.id != id) {
+                continue;
+            }
+
+            const bool sameFunction = definition.function == function;
+            const bool sameName = definition.debugName == debugName;
+            assert(sameFunction && sameName && "frame registry duplicate id collision");
+            return;
+        }
+
         definitions_.push_back(FrameDef{
             .id = id,
-            .function = function
+            .function = function,
+            .debugName = std::string(debugName)
         });
     }
 
@@ -555,6 +567,16 @@ namespace dragongod
         }
 
         return nullptr;
+    }
+
+    [[nodiscard]] std::string_view FrameRegistry::FindDebugName(FrameId id) const
+    {
+        for (const FrameDef& definition : definitions_) {
+            if (definition.id == id) {
+                return definition.debugName;
+            }
+        }
+        return {};
     }
 
     struct DecideAccess

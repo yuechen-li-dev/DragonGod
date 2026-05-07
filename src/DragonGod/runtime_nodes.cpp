@@ -9,94 +9,94 @@ namespace dragongod
         [[nodiscard]] FrameId ScenarioRootFrameImpl(StackScriptScenario scenario)
         {
             if (scenario == StackScriptScenario::PushPopComplete) {
-                return FrameId::RootPushChild;
+                return CanonicalFrameIds::RootPushChild;
             }
 
             if (scenario == StackScriptScenario::ReplaceComplete) {
-                return FrameId::RootReplace;
+                return CanonicalFrameIds::RootReplace;
             }
 
             if (scenario == StackScriptScenario::WaitPushPopComplete) {
-                return FrameId::RootWaitThenPush;
+                return CanonicalFrameIds::RootWaitThenPush;
             }
 
             if (scenario == StackScriptScenario::PushChildFail) {
-                return FrameId::RootPushFailingChild;
+                return CanonicalFrameIds::RootPushFailingChild;
             }
 
             if (scenario == StackScriptScenario::BlackboardSetReadComplete) {
-                return FrameId::RootSetThenReadBlackboard;
+                return CanonicalFrameIds::RootSetThenReadBlackboard;
             }
 
             if (scenario == StackScriptScenario::BlackboardFallbackComplete) {
-                return FrameId::RootFallbackBranch;
+                return CanonicalFrameIds::RootFallbackBranch;
             }
 
             if (scenario == StackScriptScenario::BlackboardParentChildComplete) {
-                return FrameId::RootParentChildBlackboard;
+                return CanonicalFrameIds::RootParentChildBlackboard;
             }
 
             if (scenario == StackScriptScenario::MailboxConsumeFifoComplete) {
-                return FrameId::RootMailboxConsumeFifo;
+                return CanonicalFrameIds::RootMailboxConsumeFifo;
             }
 
             if (scenario == StackScriptScenario::MailboxPeekThenConsumeComplete) {
-                return FrameId::RootMailboxPeekThenConsume;
+                return CanonicalFrameIds::RootMailboxPeekThenConsume;
             }
 
             if (scenario == StackScriptScenario::MailboxParentChildConsumeComplete) {
-                return FrameId::RootMailboxParentPushChildConsume;
+                return CanonicalFrameIds::RootMailboxParentPushChildConsume;
             }
 
             if (scenario == StackScriptScenario::MailboxEnqueueDuringTickComplete) {
-                return FrameId::RootMailboxEnqueueDuringTick;
+                return CanonicalFrameIds::RootMailboxEnqueueDuringTick;
             }
 
             if (scenario == StackScriptScenario::UtilityHighestScoreComplete) {
-                return FrameId::RootUtilityHighestScore;
+                return CanonicalFrameIds::RootUtilityHighestScore;
             }
 
             if (scenario == StackScriptScenario::UtilityHysteresisComplete) {
-                return FrameId::RootUtilityHysteresis;
+                return CanonicalFrameIds::RootUtilityHysteresis;
             }
 
             if (scenario == StackScriptScenario::UtilityMinCommitComplete) {
-                return FrameId::RootUtilityMinCommit;
+                return CanonicalFrameIds::RootUtilityMinCommit;
             }
 
             if (scenario == StackScriptScenario::UtilityTieBreakKeepCurrentComplete) {
-                return FrameId::RootUtilityTieBreakKeepCurrent;
+                return CanonicalFrameIds::RootUtilityTieBreakKeepCurrent;
             }
 
             if (scenario == StackScriptScenario::UtilityTieBreakFirstListedComplete) {
-                return FrameId::RootUtilityTieBreakFirstListed;
+                return CanonicalFrameIds::RootUtilityTieBreakFirstListed;
             }
 
             if (scenario == StackScriptScenario::UtilityTieBreakLastListedComplete) {
-                return FrameId::RootUtilityTieBreakLastListed;
+                return CanonicalFrameIds::RootUtilityTieBreakLastListed;
             }
 
             if (scenario == StackScriptScenario::ActImmediateDeferredComplete) {
-                return FrameId::RootActImmediateDeferred;
+                return CanonicalFrameIds::RootActImmediateDeferred;
             }
 
             if (scenario == StackScriptScenario::ActOrderedDeferredComplete) {
-                return FrameId::RootActOrderedDeferred;
+                return CanonicalFrameIds::RootActOrderedDeferred;
             }
 
             if (scenario == StackScriptScenario::ActParentPushChildComplete) {
-                return FrameId::RootActParentPushChild;
+                return CanonicalFrameIds::RootActParentPushChild;
             }
 
             if (scenario == StackScriptScenario::ActUtilityDrivenComplete) {
-                return FrameId::RootActUtilityDriven;
+                return CanonicalFrameIds::RootActUtilityDriven;
             }
 
             if (scenario == StackScriptScenario::TypedPhaseMailboxActComplete) {
-                return FrameId::RootTypedPhaseMailboxAct;
+                return CanonicalFrameIds::RootTypedPhaseMailboxAct;
             }
 
-            return FrameId::RootContinueThenComplete;
+            return CanonicalFrameIds::RootContinueThenComplete;
         }
 
         void EmitTrace(
@@ -193,7 +193,7 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    return Dg::Push(FrameId::ChildPop, 1);
+                    return Dg::Push(CanonicalFrameIds::ChildPop, 1);
                 case 1:
                     return Dg::Complete();
                 default:
@@ -205,7 +205,7 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    return Dg::Replace(FrameId::RecoveryComplete);
+                    return Dg::Replace(CanonicalFrameIds::RecoveryComplete);
                 default:
                     return Dg::Fail(101);
                 }
@@ -217,7 +217,7 @@ namespace dragongod
                 case 0:
                     return Dg::WaitTicks(1, 1);
                 case 1:
-                    return Dg::Push(FrameId::ChildPop, 2);
+                    return Dg::Push(CanonicalFrameIds::ChildPop, 2);
                 case 2:
                     return Dg::Complete();
                 default:
@@ -229,7 +229,7 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    return Dg::Push(FrameId::ChildFail, 1);
+                    return Dg::Push(CanonicalFrameIds::ChildFail, 1);
                 default:
                     return Dg::Fail(103);
                 }
@@ -284,13 +284,13 @@ namespace dragongod
                 case 0:
                     ctx.Bb().Set(Keys::HighSignal, true);
                     ctx.Bb().Set(Keys::Counter, 1);
-                    return Dg::Push(FrameId::ChildReadParentBool, 1);
+                    return Dg::Push(CanonicalFrameIds::ChildReadParentBool, 1);
                 case 1:
                     if (!ctx.Bb().GetOr(Keys::ChildSawHighSignal, false)) {
                         return Dg::Fail(304);
                     }
 
-                    return Dg::Push(FrameId::ChildWriteParentCounter, 2);
+                    return Dg::Push(CanonicalFrameIds::ChildWriteParentCounter, 2);
                 case 2:
                     if (ctx.Bb().GetOr(Keys::Counter, 0) == 5) {
                         return Dg::Complete();
@@ -453,7 +453,7 @@ namespace dragongod
                     }
 
                     ctx.Bb().Set(Keys::FirstMessageValue, message.value);
-                    return Dg::Push(FrameId::ChildMailboxConsumeAndPop, 1);
+                    return Dg::Push(CanonicalFrameIds::ChildMailboxConsumeAndPop, 1);
                 case 1:
                     return Dg::Complete();
                 default:
@@ -526,9 +526,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
-                            Dg::when(FrameId::UtilityActionFallback, When::Always)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(CanonicalFrameIds::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
                 default:
@@ -557,9 +557,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
-                            Dg::when(FrameId::UtilityActionFallback, When::Always)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(CanonicalFrameIds::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{
                             .hysteresis = 0.10f,
@@ -591,9 +591,9 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure),
-                            Dg::when(FrameId::UtilityActionFallback, When::Always)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure),
+                            Dg::when(CanonicalFrameIds::UtilityActionFallback, When::Always)
                         },
                         Dg::DecideOptions{
                             .minCommitTicks = 2,
@@ -624,8 +624,8 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::KeepCurrent });
                 default:
@@ -642,8 +642,8 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::FirstListed });
                 case 1:
@@ -662,8 +662,8 @@ namespace dragongod
                     return Dg::Decide(
                         ctx,
                         {
-                            Dg::when(FrameId::UtilityActionPrimary, When::HighSignal),
-                            Dg::when(FrameId::UtilityActionSecondary, When::ResourcePressure)
+                            Dg::when(CanonicalFrameIds::UtilityActionPrimary, When::HighSignal),
+                            Dg::when(CanonicalFrameIds::UtilityActionSecondary, When::ResourcePressure)
                         },
                         Dg::DecideOptions{ .tieBreak = Dg::TieBreakPolicy::LastListed });
                 case 1:
@@ -747,7 +747,7 @@ namespace dragongod
                     }
 
                     ctx.Bb().Set(Keys::Counter, 1);
-                    return Dg::Push(FrameId::ChildActImmediate, 1);
+                    return Dg::Push(CanonicalFrameIds::ChildActImmediate, 1);
                 case 1:
                     if (ctx.Bb().GetOr(Keys::Counter, 0) != 2) {
                         return Dg::Fail(702);
@@ -803,39 +803,39 @@ namespace dragongod
         // Canonical fixture registry used by scenario-based constructors and tests.
         // Domains may provide an alternative caller-owned registry.
         FrameRegistry registry;
-        registry.Add(FrameId::RootPushChild, &nodes::RootPushChild);
-        registry.Add(FrameId::RootReplace, &nodes::RootReplace);
-        registry.Add(FrameId::RootWaitThenPush, &nodes::RootWaitThenPush);
-        registry.Add(FrameId::RootPushFailingChild, &nodes::RootPushFailingChild);
-        registry.Add(FrameId::RootContinueThenComplete, &nodes::RootContinueThenComplete);
-        registry.Add(FrameId::RootSetThenReadBlackboard, &nodes::RootSetThenReadBlackboard);
-        registry.Add(FrameId::RootFallbackBranch, &nodes::RootFallbackBranch);
-        registry.Add(FrameId::RootParentChildBlackboard, &nodes::RootParentChildBlackboard);
-        registry.Add(FrameId::ChildPop, &nodes::ChildPop);
-        registry.Add(FrameId::ChildFail, &nodes::ChildFail);
-        registry.Add(FrameId::ChildReadParentBool, &nodes::ChildReadParentBool);
-        registry.Add(FrameId::ChildWriteParentCounter, &nodes::ChildWriteParentCounter);
-        registry.Add(FrameId::RecoveryComplete, &nodes::RecoveryComplete);
-        registry.Add(FrameId::RootMailboxConsumeFifo, &nodes::RootMailboxConsumeFifo);
-        registry.Add(FrameId::RootTypedPhaseMailboxAct, &nodes::RootTypedPhaseMailboxAct);
-        registry.Add(FrameId::RootMailboxPeekThenConsume, &nodes::RootMailboxPeekThenConsume);
-        registry.Add(FrameId::RootMailboxParentPushChildConsume, &nodes::RootMailboxParentPushChildConsume);
-        registry.Add(FrameId::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
-        registry.Add(FrameId::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
-        registry.Add(FrameId::RootUtilityHighestScore, &nodes::RootUtilityHighestScore);
-        registry.Add(FrameId::RootUtilityHysteresis, &nodes::RootUtilityHysteresis);
-        registry.Add(FrameId::RootUtilityMinCommit, &nodes::RootUtilityMinCommit);
-        registry.Add(FrameId::RootUtilityTieBreakKeepCurrent, &nodes::RootUtilityTieBreakKeepCurrent);
-        registry.Add(FrameId::RootUtilityTieBreakFirstListed, &nodes::RootUtilityTieBreakFirstListed);
-        registry.Add(FrameId::RootUtilityTieBreakLastListed, &nodes::RootUtilityTieBreakLastListed);
-        registry.Add(FrameId::UtilityActionPrimary, &nodes::UtilityActionPrimary);
-        registry.Add(FrameId::UtilityActionSecondary, &nodes::UtilityActionSecondary);
-        registry.Add(FrameId::UtilityActionFallback, &nodes::UtilityActionFallback);
-        registry.Add(FrameId::RootActImmediateDeferred, &nodes::RootActImmediateDeferred);
-        registry.Add(FrameId::RootActOrderedDeferred, &nodes::RootActOrderedDeferred);
-        registry.Add(FrameId::RootActParentPushChild, &nodes::RootActParentPushChild);
-        registry.Add(FrameId::ChildActImmediate, &nodes::ChildActImmediate);
-        registry.Add(FrameId::RootActUtilityDriven, &nodes::RootActUtilityDriven);
+        registry.Add(CanonicalFrameIds::RootPushChild, &nodes::RootPushChild);
+        registry.Add(CanonicalFrameIds::RootReplace, &nodes::RootReplace);
+        registry.Add(CanonicalFrameIds::RootWaitThenPush, &nodes::RootWaitThenPush);
+        registry.Add(CanonicalFrameIds::RootPushFailingChild, &nodes::RootPushFailingChild);
+        registry.Add(CanonicalFrameIds::RootContinueThenComplete, &nodes::RootContinueThenComplete);
+        registry.Add(CanonicalFrameIds::RootSetThenReadBlackboard, &nodes::RootSetThenReadBlackboard);
+        registry.Add(CanonicalFrameIds::RootFallbackBranch, &nodes::RootFallbackBranch);
+        registry.Add(CanonicalFrameIds::RootParentChildBlackboard, &nodes::RootParentChildBlackboard);
+        registry.Add(CanonicalFrameIds::ChildPop, &nodes::ChildPop);
+        registry.Add(CanonicalFrameIds::ChildFail, &nodes::ChildFail);
+        registry.Add(CanonicalFrameIds::ChildReadParentBool, &nodes::ChildReadParentBool);
+        registry.Add(CanonicalFrameIds::ChildWriteParentCounter, &nodes::ChildWriteParentCounter);
+        registry.Add(CanonicalFrameIds::RecoveryComplete, &nodes::RecoveryComplete);
+        registry.Add(CanonicalFrameIds::RootMailboxConsumeFifo, &nodes::RootMailboxConsumeFifo);
+        registry.Add(CanonicalFrameIds::RootTypedPhaseMailboxAct, &nodes::RootTypedPhaseMailboxAct);
+        registry.Add(CanonicalFrameIds::RootMailboxPeekThenConsume, &nodes::RootMailboxPeekThenConsume);
+        registry.Add(CanonicalFrameIds::RootMailboxParentPushChildConsume, &nodes::RootMailboxParentPushChildConsume);
+        registry.Add(CanonicalFrameIds::RootMailboxEnqueueDuringTick, &nodes::RootMailboxEnqueueDuringTick);
+        registry.Add(CanonicalFrameIds::ChildMailboxConsumeAndPop, &nodes::ChildMailboxConsumeAndPop);
+        registry.Add(CanonicalFrameIds::RootUtilityHighestScore, &nodes::RootUtilityHighestScore);
+        registry.Add(CanonicalFrameIds::RootUtilityHysteresis, &nodes::RootUtilityHysteresis);
+        registry.Add(CanonicalFrameIds::RootUtilityMinCommit, &nodes::RootUtilityMinCommit);
+        registry.Add(CanonicalFrameIds::RootUtilityTieBreakKeepCurrent, &nodes::RootUtilityTieBreakKeepCurrent);
+        registry.Add(CanonicalFrameIds::RootUtilityTieBreakFirstListed, &nodes::RootUtilityTieBreakFirstListed);
+        registry.Add(CanonicalFrameIds::RootUtilityTieBreakLastListed, &nodes::RootUtilityTieBreakLastListed);
+        registry.Add(CanonicalFrameIds::UtilityActionPrimary, &nodes::UtilityActionPrimary);
+        registry.Add(CanonicalFrameIds::UtilityActionSecondary, &nodes::UtilityActionSecondary);
+        registry.Add(CanonicalFrameIds::UtilityActionFallback, &nodes::UtilityActionFallback);
+        registry.Add(CanonicalFrameIds::RootActImmediateDeferred, &nodes::RootActImmediateDeferred);
+        registry.Add(CanonicalFrameIds::RootActOrderedDeferred, &nodes::RootActOrderedDeferred);
+        registry.Add(CanonicalFrameIds::RootActParentPushChild, &nodes::RootActParentPushChild);
+        registry.Add(CanonicalFrameIds::ChildActImmediate, &nodes::ChildActImmediate);
+        registry.Add(CanonicalFrameIds::RootActUtilityDriven, &nodes::RootActUtilityDriven);
         return registry;
     }
 }
