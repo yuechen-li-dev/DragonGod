@@ -158,6 +158,7 @@ Blackboard supports typed keys (`BbKey<T>`) with current supported value types:
 
 - `bool`
 - `int`
+- `float`
 
 Operations:
 

@@ -320,11 +320,19 @@ enum class FrameControlKind
 
             [[nodiscard]] bool operator==(const IntChunkEntry& other) const = default;
         };
+        struct FloatChunkEntry
+        {
+            std::uint32_t slot = 0;
+            float value = 0.0f;
+
+            [[nodiscard]] bool operator==(const FloatChunkEntry& other) const = default;
+        };
 
         struct Chunk
         {
             std::vector<BoolChunkEntry> boolEntries;
             std::vector<IntChunkEntry> intEntries;
+            std::vector<FloatChunkEntry> floatEntries;
             std::vector<std::uint32_t> dirtySlots;
 
             [[nodiscard]] bool operator==(const Chunk& other) const = default;
@@ -361,7 +369,8 @@ enum class FrameControlKind
         enum class BbValueKind
         {
             Bool,
-            Int
+            Int,
+            Float
         };
 
         struct BbSlotMetadata
@@ -382,6 +391,11 @@ enum class FrameControlKind
             std::uint32_t slot = 0;
             int value = 0;
         };
+        struct FloatEntry
+        {
+            std::uint32_t slot = 0;
+            float value = 0.0f;
+        };
 
         template <typename T>
         [[nodiscard]] const T* FindValue(std::uint32_t slot) const;
@@ -398,6 +412,7 @@ enum class FrameControlKind
 
         std::vector<BoolEntry> boolEntries_;
         std::vector<IntEntry> intEntries_;
+        std::vector<FloatEntry> floatEntries_;
         std::vector<std::uint32_t> dirtySlots_;
         std::vector<BbSlotMetadata> slotMetadata_;
         std::optional<SlotCollision> lastSlotCollision_;
@@ -731,7 +746,7 @@ enum class FrameControlKind
     template <typename T>
     void Blackboard::Set(BbKey<T> key, const T& value)
     {
-        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>, "Blackboard key type not supported in M18b");
         ValidateKey<T>(key);
         UpsertValue<T>(key.slot, value);
         MarkDirty(key.slot);
@@ -740,7 +755,7 @@ enum class FrameControlKind
     template <typename T>
     [[nodiscard]] bool Blackboard::TryGet(BbKey<T> key, T& value) const
     {
-        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>, "Blackboard key type not supported in M18b");
         const T* found = FindValue<T>(key.slot);
         if (found == nullptr) {
             return false;
@@ -753,7 +768,7 @@ enum class FrameControlKind
     template <typename T>
     [[nodiscard]] T Blackboard::GetOr(BbKey<T> key, const T& fallback) const
     {
-        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>, "Blackboard key type not supported in M18b");
         const T* found = FindValue<T>(key.slot);
         if (found == nullptr) {
             return fallback;
@@ -765,7 +780,7 @@ enum class FrameControlKind
     template <typename T>
     [[nodiscard]] bool Blackboard::IsDirty(BbKey<T> key) const
     {
-        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int>, "Blackboard key type not supported in M2a");
+        static_assert(std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float>, "Blackboard key type not supported in M18b");
         return HasDirtySlot(key.slot);
     }
 
@@ -779,6 +794,11 @@ enum class FrameControlKind
     [[nodiscard]] inline Blackboard::BbValueKind Blackboard::ValueKindFor<int>()
     {
         return BbValueKind::Int;
+    }
+    template <>
+    [[nodiscard]] inline Blackboard::BbValueKind Blackboard::ValueKindFor<float>()
+    {
+        return BbValueKind::Float;
     }
 
     template <>
@@ -797,6 +817,17 @@ enum class FrameControlKind
     [[nodiscard]] inline const int* Blackboard::FindValue<int>(std::uint32_t slot) const
     {
         for (const IntEntry& entry : intEntries_) {
+            if (entry.slot == slot) {
+                return &entry.value;
+            }
+        }
+
+        return nullptr;
+    }
+    template <>
+    [[nodiscard]] inline const float* Blackboard::FindValue<float>(std::uint32_t slot) const
+    {
+        for (const FloatEntry& entry : floatEntries_) {
             if (entry.slot == slot) {
                 return &entry.value;
             }
@@ -832,6 +863,21 @@ enum class FrameControlKind
         }
 
         intEntries_.push_back(IntEntry{
+            .slot = slot,
+            .value = value
+        });
+    }
+    template <>
+    inline void Blackboard::UpsertValue<float>(std::uint32_t slot, const float& value)
+    {
+        for (FloatEntry& entry : floatEntries_) {
+            if (entry.slot == slot) {
+                entry.value = value;
+                return;
+            }
+        }
+
+        floatEntries_.push_back(FloatEntry{
             .slot = slot,
             .value = value
         });

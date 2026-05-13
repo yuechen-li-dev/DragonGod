@@ -80,7 +80,7 @@ Every frame has access to four runtime state surfaces through its context:
 
 ### Blackboard (`ctx.Bb()`)
 
-The blackboard is a typed key-value store. Keys are `BbKey<T>` values with a name and a stable integer slot id. Currently supported value types are `bool` and `int`.
+The blackboard is a typed key-value store. Keys are `BbKey<T>` values with a name and a stable integer slot id. Currently supported value types are `bool`, `int`, and `float`.
 
 The blackboard serves as the shared working memory for frame logic across ticks. A frame writes values it wants to remember or communicate; later ticks (or child frames) read them.
 
