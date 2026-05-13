@@ -32,7 +32,8 @@ Read canonical nodes as examples/proofs, not as a required domain schema.
 Why this shape:
 
 - `FrameCtx` gives explicit access to runtime surfaces (`Bb`, `Mb`, `Act`).
-- `switch` on `PcAs<TEnum>()` keeps authored control flow deterministic and inspectable.
+- `switch` on `PcAs<TEnum>()` is the canonical low-level runtime shape today: explicit, deterministic, persistence-friendly, and a good generated-code target.
+- this explicit shape does carry real manual-authoring overhead; that tradeoff is intentional in the current C++ layer rather than hidden in coroutine state.
 - explicit `Dg::*` control returns preserve stack/runtime traceability.
 
 ## Typed phases (`ctx.PcAs<TEnum>()`)
@@ -54,6 +55,38 @@ switch (ctx.PcAs<PatrolPhase>()) { ... }
 ```
 
 Why: this avoids “magic pc integers” and prevents ad hoc blackboard phase state.
+
+## Domain-scoped `FrameId` helper pattern for author-owned code
+
+Use one local domain constant plus a local enum + helper function, instead of hand-writing `FrameId{...}` literals at every call site.
+
+```cpp
+namespace guard_ai
+{
+    inline constexpr std::uint64_t FrameDomain = 10;
+
+    enum class FrameLocalId : std::uint32_t
+    {
+        Root = 1,
+        Patrol = 2,
+        Recover = 3
+    };
+
+    [[nodiscard]] constexpr dragongod::FrameId Frame(FrameLocalId id)
+    {
+        return dragongod::FrameId{
+            .domain = FrameDomain,
+            .local = static_cast<std::uint32_t>(id)
+        };
+    }
+}
+```
+
+Why this is recommended:
+
+- no global frame-enum coordination across domains,
+- no repeated anonymous struct literals,
+- readable domain-local frame naming at registration and push call sites.
 
 ## Control helpers and when to use each
 
@@ -235,6 +268,13 @@ return Dg::Decide(
 ```
 
 Why: utility commitment/hysteresis/min-commit state is managed in runtime utility memory (not hand-rolled in frame data).
+
+Decision tick timing note (current runtime semantics):
+
+- `Dg::Decide(...)` returns a normal `Push(...)` control with `resumePc = ctx.Pc()`.
+- the decision tick is still a real tick where the parent executed/scored candidates.
+- selected child begins on a later tick under normal push timing.
+- when child later pops/completes, parent resumes the same decision phase and re-evaluates deterministically.
 
 ---
 
