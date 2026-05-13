@@ -71,7 +71,7 @@ FACT(M9_Stay_KeepsCurrentPhaseUntilMailboxAdvances)
     bool sawDeferredAlarmEmission = false;
     for (const std::vector<dragongod::ActRequest>& tickActuation : result.actuationByTick) {
         for (const dragongod::ActRequest& request : tickActuation) {
-            if (request.id == dragongod::ActId::RaiseAlarm && request.deferred) {
+            if (request.id == dragongod::CanonicalActIds::RaiseAlarm && request.deferred) {
                 sawDeferredAlarmEmission = true;
                 break;
             }

@@ -211,8 +211,8 @@ This is useful for self-signaling or frame-to-frame mailbox flows where one phas
 Canonical usage:
 
 ```cpp
-ctx.Act().Immediate(ActId::OpenDoor);
-ctx.Act().Deferred(ActId::RaiseAlarm, 2);
+ctx.Act().Immediate(CanonicalActIds::OpenDoor);
+ctx.Act().Deferred(CanonicalActIds::RaiseAlarm, 2);
 ```
 
 Why: preserves deterministic per-tick emission/pending traces and save/restore behavior.
@@ -351,7 +351,7 @@ enum class RootTypedPhaseMailboxActPhase : std::uint32_t
         }
 
         ctx.Bb().Set(Keys::FirstMessageValue, message.value);
-        ctx.Act().Deferred(ActId::RaiseAlarm, 1);
+        ctx.Act().Deferred(CanonicalActIds::RaiseAlarm, 1);
         return Dg::Continue(RootTypedPhaseMailboxActPhase::AwaitAlert);
     case RootTypedPhaseMailboxActPhase::AwaitAlert:
         if (!ctx.Mb().ConsumeFront(message)) {

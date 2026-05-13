@@ -1,10 +1,43 @@
 #include "../../Marionette/test_harness.h"
 #include "../../../src/DragonGod/runtime_compat.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace
 {
+    namespace author_a
+    {
+        inline constexpr std::uint64_t ActDomain = 0xA11CE;
+        enum class Local : std::uint32_t { SharedLocal = 1 };
+        [[nodiscard]] constexpr dragongod::ActId Act(Local id)
+        {
+            return dragongod::ActId{ .domain = ActDomain, .local = static_cast<std::uint32_t>(id) };
+        }
+    }
+
+    namespace author_b
+    {
+        inline constexpr std::uint64_t ActDomain = 0xB0B;
+        enum class Local : std::uint32_t { SharedLocal = 1 };
+        [[nodiscard]] constexpr dragongod::ActId Act(Local id)
+        {
+            return dragongod::ActId{ .domain = ActDomain, .local = static_cast<std::uint32_t>(id) };
+        }
+    }
+
+    namespace author_frames
+    {
+        inline constexpr dragongod::FrameId Root = { .domain = 0xD00D, .local = 1 };
+        [[nodiscard]] dragongod::FrameControl EmitTwoDomains(dragongod::FrameCtx& ctx)
+        {
+            ctx.Act().Immediate(author_a::Act(author_a::Local::SharedLocal));
+            ctx.Act().Deferred(author_b::Act(author_b::Local::SharedLocal), 1);
+            return dragongod::Dg::Complete();
+        }
+    }
+
     void AppendTickTrace(
         std::vector<dragongod::TickTraceEntry>& into,
         const std::vector<dragongod::TickTraceEntry>& from)
@@ -29,11 +62,11 @@ FACT(M7_CanonicalActuationAuthorShape_ImmediateAndDeferredAreReal)
     bool sawDeferredMatured = false;
     for (const std::vector<dragongod::ActRequest>& tickActs : run.actuationByTick) {
         for (const dragongod::ActRequest& request : tickActs) {
-            if (!request.deferred && request.id == dragongod::ActId::PlayBark) {
+            if (!request.deferred && request.id == dragongod::CanonicalActIds::PlayBark) {
                 sawImmediate = true;
             }
 
-            if (request.deferred && request.id == dragongod::ActId::RaiseAlarm) {
+            if (request.deferred && request.id == dragongod::CanonicalActIds::RaiseAlarm) {
                 sawDeferredMatured = true;
             }
         }
@@ -80,15 +113,15 @@ FACT(M7_ImmediateDeferredOrdering_IsDeterministic)
     }
     ASSERT_EQUAL(static_cast<std::size_t>(1), run.tickTrace[0].emittedActuation.size(), "tick 0 should emit one immediate request");
     ASSERT_TRUE(
-        run.tickTrace[0].emittedActuation[0].id == dragongod::ActId::OpenDoor,
+        run.tickTrace[0].emittedActuation[0].id == dragongod::CanonicalActIds::OpenDoor,
         "immediate request ordering should preserve authored order");
 
     ASSERT_EQUAL(static_cast<std::size_t>(2), run.tickTrace[2].emittedActuation.size(), "tick 2 should emit both matured deferred requests");
     ASSERT_TRUE(
-        run.tickTrace[2].emittedActuation[0].id == dragongod::ActId::PlayBark,
+        run.tickTrace[2].emittedActuation[0].id == dragongod::CanonicalActIds::PlayBark,
         "first deferred emission order should match scheduling order");
     ASSERT_TRUE(
-        run.tickTrace[2].emittedActuation[1].id == dragongod::ActId::RaiseAlarm,
+        run.tickTrace[2].emittedActuation[1].id == dragongod::CanonicalActIds::RaiseAlarm,
         "second deferred emission order should match scheduling order");
 }
 
@@ -108,6 +141,7 @@ FACT(M7_DeferredActuation_PersistsAcrossChunkSaveRestore)
     const dragongod::FrameRunResult secondLeg = restored.RunForTicks(5);
 
     ASSERT_EQUAL(static_cast<std::size_t>(1), snapshot.deferredActuation.size(), "snapshot should persist one pending deferred request");
+    ASSERT_TRUE(snapshot.deferredActuation[0].id == dragongod::CanonicalActIds::RaiseAlarm, "snapshot should preserve canonical domain/local act identity");
 
     std::vector<dragongod::TickTraceEntry> restoredTrace;
     AppendTickTrace(restoredTrace, firstLeg.tickTrace);
@@ -115,6 +149,33 @@ FACT(M7_DeferredActuation_PersistsAcrossChunkSaveRestore)
 
     const dragongod::TraceComparisonResult comparison = dragongod::CompareTickTraces(uninterruptedRun.tickTrace, restoredTrace);
     ASSERT_TRUE(comparison.matches, "save/restore should preserve deferred actuation behavior and ordering");
+}
+
+FACT(M7_AuthorOwnedActDomains_CanShareLocalIdsWithoutCollision)
+{
+    dragongod::FrameRegistry registry;
+    registry.Add(author_frames::Root, &author_frames::EmitTwoDomains, "author_emit_two_domains");
+
+    dragongod::StackFrameRuntimeSession session(dragongod::StackFrameSessionInit{
+        .registry = registry,
+        .rootFrame = author_frames::Root,
+        .mailboxInput = dragongod::RuntimeMailboxInput{}
+    });
+
+    const dragongod::FrameRunResult run = session.RunForTicks(2);
+    ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "author-owned root should complete");
+    ASSERT_EQUAL(static_cast<std::size_t>(2), run.actuationByTick.size(), "two ticks should include immediate and matured deferred emissions");
+    ASSERT_EQUAL(static_cast<std::size_t>(1), run.actuationByTick[0].size(), "tick 0 should include immediate author act");
+    ASSERT_EQUAL(static_cast<std::size_t>(1), run.actuationByTick[1].size(), "tick 1 should include matured deferred author act");
+    ASSERT_TRUE(run.actuationByTick[0][0].id == author_a::Act(author_a::Local::SharedLocal), "domain A act id should be preserved");
+    ASSERT_TRUE(run.actuationByTick[1][0].id == author_b::Act(author_b::Local::SharedLocal), "domain B act id should be preserved");
+
+    const std::vector<std::string> serialized = dragongod::SerializeTickTrace(run.tickTrace);
+    ASSERT_TRUE(serialized.size() >= static_cast<std::size_t>(2), "serialized trace should include both ticks");
+    if (serialized.size() >= static_cast<std::size_t>(2)) {
+        ASSERT_TRUE(serialized[0].find("659918:1") != std::string::npos, "unknown domain act should serialize as domain:local");
+        ASSERT_TRUE(serialized[1].find("2827:1") != std::string::npos, "second unknown domain act should serialize as domain:local");
+    }
 }
 
 FACT(M7_TraceReplayIncludesActuation_AndRepeatedRunsDoNotDrift)
