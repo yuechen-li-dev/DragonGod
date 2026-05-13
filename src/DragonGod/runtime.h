@@ -751,6 +751,92 @@ enum class FrameControlKind
         return BbValueKind::Int;
     }
 
+    template <>
+    [[nodiscard]] inline const bool* Blackboard::FindValue<bool>(std::uint32_t slot) const
+    {
+        for (const BoolEntry& entry : boolEntries_) {
+            if (entry.slot == slot) {
+                return &entry.value;
+            }
+        }
+
+        return nullptr;
+    }
+
+    template <>
+    [[nodiscard]] inline const int* Blackboard::FindValue<int>(std::uint32_t slot) const
+    {
+        for (const IntEntry& entry : intEntries_) {
+            if (entry.slot == slot) {
+                return &entry.value;
+            }
+        }
+
+        return nullptr;
+    }
+
+    template <>
+    inline void Blackboard::UpsertValue<bool>(std::uint32_t slot, const bool& value)
+    {
+        for (BoolEntry& entry : boolEntries_) {
+            if (entry.slot == slot) {
+                entry.value = value;
+                return;
+            }
+        }
+
+        boolEntries_.push_back(BoolEntry{
+            .slot = slot,
+            .value = value
+        });
+    }
+
+    template <>
+    inline void Blackboard::UpsertValue<int>(std::uint32_t slot, const int& value)
+    {
+        for (IntEntry& entry : intEntries_) {
+            if (entry.slot == slot) {
+                entry.value = value;
+                return;
+            }
+        }
+
+        intEntries_.push_back(IntEntry{
+            .slot = slot,
+            .value = value
+        });
+    }
+
+    template <typename T>
+    inline void Blackboard::ValidateKey(BbKey<T> key)
+    {
+        const BbValueKind keyKind = ValueKindFor<T>();
+        for (const BbSlotMetadata& metadata : slotMetadata_) {
+            if (metadata.slot != key.slot) {
+                continue;
+            }
+
+            const bool eitherUnnamed = metadata.name.empty() || key.name.empty();
+            if (metadata.kind != keyKind || (!eitherUnnamed && metadata.name != key.name)) {
+                lastSlotCollision_ = SlotCollision{
+                    .slot = key.slot,
+                    .firstName = metadata.name,
+                    .secondName = key.name,
+                    .firstWasBool = metadata.kind == BbValueKind::Bool,
+                    .secondWasBool = keyKind == BbValueKind::Bool
+                };
+            }
+
+            return;
+        }
+
+        slotMetadata_.push_back(BbSlotMetadata{
+            .slot = key.slot,
+            .name = key.name,
+            .kind = keyKind
+        });
+    }
+
     template <typename TEnum>
     [[nodiscard]] TEnum FrameCtx::PcAs() const
     {

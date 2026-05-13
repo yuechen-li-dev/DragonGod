@@ -363,61 +363,6 @@ namespace dragongod
         staged_ = chunk.stagedMessages;
     }
 
-    template <>
-    [[nodiscard]] const bool* Blackboard::FindValue<bool>(std::uint32_t slot) const
-    {
-        for (const BoolEntry& entry : boolEntries_) {
-            if (entry.slot == slot) {
-                return &entry.value;
-            }
-        }
-
-        return nullptr;
-    }
-
-    template <>
-    [[nodiscard]] const int* Blackboard::FindValue<int>(std::uint32_t slot) const
-    {
-        for (const IntEntry& entry : intEntries_) {
-            if (entry.slot == slot) {
-                return &entry.value;
-            }
-        }
-
-        return nullptr;
-    }
-
-    template <>
-    void Blackboard::UpsertValue<bool>(std::uint32_t slot, const bool& value)
-    {
-        for (BoolEntry& entry : boolEntries_) {
-            if (entry.slot == slot) {
-                entry.value = value;
-                return;
-            }
-        }
-
-        boolEntries_.push_back(BoolEntry{
-            .slot = slot,
-            .value = value
-        });
-    }
-
-    template <>
-    void Blackboard::UpsertValue<int>(std::uint32_t slot, const int& value)
-    {
-        for (IntEntry& entry : intEntries_) {
-            if (entry.slot == slot) {
-                entry.value = value;
-                return;
-            }
-        }
-
-        intEntries_.push_back(IntEntry{
-            .slot = slot,
-            .value = value
-        });
-    }
 
     [[nodiscard]] const std::vector<std::uint32_t>& Blackboard::DirtySlots() const
     {
@@ -506,34 +451,6 @@ namespace dragongod
     [[nodiscard]] std::optional<Blackboard::SlotCollision> Blackboard::LastSlotCollision() const
     {
         return lastSlotCollision_;
-    }
-
-    template <typename T>
-    void Blackboard::ValidateKey(BbKey<T> key)
-    {
-        const BbValueKind kind = ValueKindFor<T>();
-        for (const BbSlotMetadata& metadata : slotMetadata_) {
-            if (metadata.slot != key.slot) {
-                continue;
-            }
-            const bool eitherUnnamed = metadata.name.empty() || key.name.empty();
-            if (metadata.kind != kind || (!eitherUnnamed && metadata.name != key.name)) {
-                lastSlotCollision_ = SlotCollision{
-                    .slot = key.slot,
-                    .firstName = metadata.name,
-                    .secondName = key.name,
-                    .firstWasBool = metadata.kind == BbValueKind::Bool,
-                    .secondWasBool = kind == BbValueKind::Bool
-                };
-            }
-            return;
-        }
-
-        slotMetadata_.push_back(BbSlotMetadata{
-            .slot = key.slot,
-            .name = key.name,
-            .kind = kind
-        });
     }
 
     void FrameRegistry::Add(FrameId id, FrameFn function, std::string_view debugName)
