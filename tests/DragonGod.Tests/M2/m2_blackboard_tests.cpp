@@ -12,6 +12,7 @@ namespace
         constexpr dragongod::BbKey<bool> HighSignal{ .name = "HighSignal", .slot = 1 };
         constexpr dragongod::BbKey<bool> ChildSawHighSignal{ .name = "ChildSawHighSignal", .slot = 2 };
         constexpr dragongod::BbKey<int> Counter{ .name = "Counter", .slot = 3 };
+        constexpr dragongod::BbKey<float> Pressure{ .name = "Pressure", .slot = 13 };
     }
 
     [[nodiscard]] std::string TraceKindToString(dragongod::FrameTraceKind kind)
@@ -374,4 +375,63 @@ FACT(M17a_Blackboard_SameSlotDifferentType_IsDiagnosed)
 
     ASSERT_TRUE(collision->firstWasBool, "first key kind should identify bool");
     ASSERT_FALSE(collision->secondWasBool, "second key kind should identify int");
+}
+
+FACT(M18b_Blackboard_FloatSetTryGetGetOr_Works)
+{
+    dragongod::Blackboard blackboard;
+    blackboard.Set(Keys::Pressure, 0.5f);
+
+    float out = 0.0f;
+    ASSERT_TRUE(blackboard.TryGet(Keys::Pressure, out), "TryGet should find float value after Set");
+    ASSERT_EQUAL(0.5f, out, "TryGet should return exact deterministic float value");
+    ASSERT_EQUAL(0.5f, blackboard.GetOr(Keys::Pressure, 1.0f), "GetOr should return stored float value");
+
+    constexpr dragongod::BbKey<float> missing{ .name = "MissingPressure", .slot = 14 };
+    ASSERT_EQUAL(0.25f, blackboard.GetOr(missing, 0.25f), "GetOr should return float fallback when key is missing");
+}
+
+FACT(M18b_Blackboard_FloatDirtyTracking_Works)
+{
+    dragongod::Blackboard blackboard;
+    blackboard.Set(Keys::Pressure, 1.0f);
+
+    ASSERT_TRUE(blackboard.IsDirty(Keys::Pressure), "writing float key should mark slot dirty");
+    blackboard.ClearDirty();
+    ASSERT_FALSE(blackboard.IsDirty(Keys::Pressure), "clearing dirty state should clear float slot dirtiness");
+}
+
+FACT(M18b_Blackboard_FloatSlotCollisions_AreDiagnosed)
+{
+    dragongod::Blackboard blackboard;
+    constexpr dragongod::BbKey<float> pressureA{ .name = "Pressure", .slot = 33 };
+    constexpr dragongod::BbKey<float> pressureB{ .name = "Pressure", .slot = 33 };
+    constexpr dragongod::BbKey<float> pressureOtherName{ .name = "PressureB", .slot = 33 };
+    constexpr dragongod::BbKey<int> intKind{ .name = "Pressure", .slot = 33 };
+
+    blackboard.Set(pressureA, 0.25f);
+    blackboard.Set(pressureB, 0.50f);
+    ASSERT_FALSE(blackboard.HasSlotCollision(), "same float metadata on same slot should not collide");
+
+    blackboard.Set(pressureOtherName, 0.75f);
+    ASSERT_TRUE(blackboard.HasSlotCollision(), "same slot with different float key names should collide");
+
+    dragongod::Blackboard typedBlackboard;
+    typedBlackboard.Set(intKind, 1);
+    typedBlackboard.Set(pressureA, 1.0f);
+    ASSERT_TRUE(typedBlackboard.HasSlotCollision(), "same slot with int/float type mismatch should collide");
+}
+
+FACT(M18b_Blackboard_FloatChunkRoundTrip_Works)
+{
+    dragongod::Blackboard first;
+    first.Set(Keys::Pressure, 0.25f);
+    const dragongod::Blackboard::Chunk chunk = first.ExportChunk();
+
+    dragongod::Blackboard second;
+    second.ImportChunk(chunk);
+
+    float value = 0.0f;
+    ASSERT_TRUE(second.TryGet(Keys::Pressure, value), "imported chunk should include float entry");
+    ASSERT_EQUAL(0.25f, value, "imported float value should match exported value");
 }

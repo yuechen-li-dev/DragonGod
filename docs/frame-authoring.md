@@ -162,7 +162,7 @@ if (ctx.Bb().GetOr(Keys::HighSignal, false)) {
 }
 ```
 
-Use typed keys (`BbKey<bool>` / `BbKey<int>`) with stable slot ids.
+Use typed keys (`BbKey<bool>` / `BbKey<int>` / `BbKey<float>`) with stable slot ids.
 
 Operational blackboard truth:
 

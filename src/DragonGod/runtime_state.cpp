@@ -391,6 +391,12 @@ namespace dragongod
                 .value = entry.value
             });
         }
+        for (const FloatEntry& entry : floatEntries_) {
+            chunk.floatEntries.push_back(FloatChunkEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
 
         chunk.dirtySlots = dirtySlots_;
         return chunk;
@@ -400,6 +406,7 @@ namespace dragongod
     {
         boolEntries_.clear();
         intEntries_.clear();
+        floatEntries_.clear();
         dirtySlots_.clear();
         slotMetadata_.clear();
         lastSlotCollision_.reset();
@@ -415,6 +422,13 @@ namespace dragongod
         for (const IntChunkEntry& entry : chunk.intEntries) {
             ValidateKey<int>(BbKey<int>{ .name = "", .slot = entry.slot });
             intEntries_.push_back(IntEntry{
+                .slot = entry.slot,
+                .value = entry.value
+            });
+        }
+        for (const FloatChunkEntry& entry : chunk.floatEntries) {
+            ValidateKey<float>(BbKey<float>{ .name = "", .slot = entry.slot });
+            floatEntries_.push_back(FloatEntry{
                 .slot = entry.slot,
                 .value = entry.value
             });
