@@ -166,18 +166,48 @@ enum class FrameControlKind
         TypedPhaseMailboxActComplete
     };
 
-    enum class ActId
+    // Runtime actuation identity is numeric and domain-scoped: {domain, local}.
+    // Canonical fixture acts live in CanonicalActIds::*.
+    // Author-owned domains define their own domain/local helpers without editing core runtime enums.
+    struct ActId
     {
-        PlayBark,
-        RaiseAlarm,
-        OpenDoor,
-        UtilityPrimary,
-        UtilitySecondary
+        std::uint64_t domain = 0;
+        std::uint32_t local = 0;
+
+        [[nodiscard]] bool operator==(const ActId& other) const = default;
     };
+
+    namespace CanonicalActIds
+    {
+        inline constexpr std::uint64_t Domain = 0;
+
+        enum class Local : std::uint32_t
+        {
+            OpenDoor = 1,
+            PlayBark = 2,
+            RaiseAlarm = 3,
+            UtilityPrimary = 4,
+            UtilitySecondary = 5
+        };
+
+        [[nodiscard]] constexpr ActId Act(Local id)
+        {
+            return ActId{
+                .domain = Domain,
+                .local = static_cast<std::uint32_t>(id)
+            };
+        }
+
+        inline constexpr ActId OpenDoor = Act(Local::OpenDoor);
+        inline constexpr ActId PlayBark = Act(Local::PlayBark);
+        inline constexpr ActId RaiseAlarm = Act(Local::RaiseAlarm);
+        inline constexpr ActId UtilityPrimary = Act(Local::UtilityPrimary);
+        inline constexpr ActId UtilitySecondary = Act(Local::UtilitySecondary);
+    }
 
     struct ActRequest
     {
-        ActId id = ActId::PlayBark;
+        ActId id = CanonicalActIds::PlayBark;
         bool deferred = false;
         TickIndex emittedTick = 0;
         TickIndex dueTick = 0;
@@ -188,7 +218,7 @@ enum class FrameControlKind
 
     struct DeferredActChunkEntry
     {
-        ActId id = ActId::PlayBark;
+        ActId id = CanonicalActIds::PlayBark;
         TickIndex dueTick = 0;
         TickIndex emittedTick = 0;
         std::uint32_t delayTicks = 0;

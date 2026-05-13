@@ -27,16 +27,14 @@ namespace dragongod
             return "unknown";
         }
 
-        [[nodiscard]] const char* ActIdName(ActId id)
+        [[nodiscard]] std::string ActIdName(ActId id)
         {
-            switch (id) {
-            case ActId::PlayBark: return "play_bark";
-            case ActId::RaiseAlarm: return "raise_alarm";
-            case ActId::OpenDoor: return "open_door";
-            case ActId::UtilityPrimary: return "utility_primary";
-            case ActId::UtilitySecondary: return "utility_secondary";
-            }
-            return "unknown";
+            if (id == CanonicalActIds::PlayBark) return "play_bark";
+            if (id == CanonicalActIds::RaiseAlarm) return "raise_alarm";
+            if (id == CanonicalActIds::OpenDoor) return "open_door";
+            if (id == CanonicalActIds::UtilityPrimary) return "utility_primary";
+            if (id == CanonicalActIds::UtilitySecondary) return "utility_secondary";
+            return std::to_string(id.domain) + ":" + std::to_string(id.local);
         }
 
         [[nodiscard]] const char* CanonicalFrameName(FrameId id)

@@ -395,7 +395,7 @@ namespace dragongod
                     }
 
                     ctx.Bb().Set(Keys::FirstMessageValue, message.value);
-                    ctx.Act().Deferred(ActId::RaiseAlarm, 1);
+                    ctx.Act().Deferred(CanonicalActIds::RaiseAlarm, 1);
                     return Dg::Continue(RootTypedPhaseMailboxActPhase::AwaitAlert);
                 case RootTypedPhaseMailboxActPhase::AwaitAlert:
                     if (!ctx.Mb().ConsumeFront(message)) {
@@ -713,10 +713,10 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Act().Immediate(ActId::PlayBark);
+                    ctx.Act().Immediate(CanonicalActIds::PlayBark);
                     return Dg::WaitTicks(2, 1);
                 case 1:
-                    ctx.Act().Deferred(ActId::RaiseAlarm, 3);
+                    ctx.Act().Deferred(CanonicalActIds::RaiseAlarm, 3);
                     return Dg::Complete();
                 default:
                     return Dg::Fail(700);
@@ -727,9 +727,9 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Act().Immediate(ActId::OpenDoor);
-                    ctx.Act().Deferred(ActId::PlayBark, 2);
-                    ctx.Act().Deferred(ActId::RaiseAlarm, 2);
+                    ctx.Act().Immediate(CanonicalActIds::OpenDoor);
+                    ctx.Act().Deferred(CanonicalActIds::PlayBark, 2);
+                    ctx.Act().Deferred(CanonicalActIds::RaiseAlarm, 2);
                     return Dg::Complete();
                 default:
                     return Dg::Fail(701);
@@ -741,7 +741,7 @@ namespace dragongod
                 Message message;
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Act().Immediate(ActId::OpenDoor);
+                    ctx.Act().Immediate(CanonicalActIds::OpenDoor);
                     if (ctx.Mb().ConsumeFront(message)) {
                         ctx.Bb().Set(Keys::ActMailboxSeen, true);
                     }
@@ -763,7 +763,7 @@ namespace dragongod
             {
                 switch (ctx.Pc()) {
                 case 0:
-                    ctx.Act().Immediate(ActId::PlayBark);
+                    ctx.Act().Immediate(CanonicalActIds::PlayBark);
                     ctx.Bb().Set(Keys::Counter, 2);
                     return Dg::Pop();
                 default:
@@ -780,9 +780,9 @@ namespace dragongod
                     return Dg::Continue(1);
                 case 1:
                     if (When::HighSignal(ctx) >= When::ResourcePressure(ctx)) {
-                        ctx.Act().Immediate(ActId::UtilityPrimary);
+                        ctx.Act().Immediate(CanonicalActIds::UtilityPrimary);
                     } else {
-                        ctx.Act().Immediate(ActId::UtilitySecondary);
+                        ctx.Act().Immediate(CanonicalActIds::UtilitySecondary);
                     }
 
                     return Dg::Complete();

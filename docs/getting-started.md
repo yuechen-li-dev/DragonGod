@@ -38,7 +38,7 @@ This is the smallest copy-pasteable path aligned with current code.
 
 In `src/DragonGod/runtime.h`, add one `FrameId` and one `StackScriptScenario` entry.
 
-If this new frame will emit actuation (`ctx.Act().Immediate(...)` or `ctx.Act().Deferred(...)`), also add the needed `ActId` enum entry in the same file. This extension step is analogous to adding a new `FrameId`; otherwise `ActId::YourNewAction` will not exist at compile time.
+If this new frame will emit actuation (`ctx.Act().Immediate(...)` or `ctx.Act().Deferred(...)`), define an author-owned act helper with an explicit act domain + local enum in your domain code. You no longer edit a global runtime `ActId` enum for new author-owned actions.
 
 ```cpp
 enum class FrameId
@@ -47,10 +47,19 @@ enum class FrameId
     RootHelloTwoPhase
 };
 
-enum class ActId
+struct MyDomainActs
 {
-    // ...existing ids...
-    YourNewAction
+    static constexpr std::uint64_t Domain = 0xA11CE;
+
+    enum class Local : std::uint32_t
+    {
+        YourNewAction = 1
+    };
+
+    static constexpr dragongod::ActId Act(Local id)
+    {
+        return dragongod::ActId{ .domain = Domain, .local = static_cast<std::uint32_t>(id) };
+    }
 };
 
 enum class StackScriptScenario
