@@ -188,7 +188,7 @@ The artifact system is particularly important for DragonGod testing: when a `Com
 
 DragonGod's architecture is complete in its core model, but some surfaces are still narrow in their current implementation:
 
-- **Frame registration is internal/static.** There is not yet a public API for registering an external frame pack. Authors currently add frames by editing `runtime.h` and `runtime_nodes.cpp` directly. The architecture supports an external registration surface; it has not been built yet.
+- **Canonical fixture growth is still runtime-owned.** Built-in proof/demo frames still live in runtime files (`runtime.h` + `runtime_nodes.cpp`). Author-owned domains can now provide their own registries publicly via `StackFrameRuntimeConfig`, but canonical fixture authoring remains an in-repo runtime edit path.
 - **Blackboard supports `bool` and `int` only.** The type system is intentionally limited for now. The slot-based storage model is designed to accommodate additional types without structural changes.
 - **Message payloads are `kind + int value`.** The `Message` struct has two fields. Richer payload types would require extending the struct and updating the serialization surface.
 

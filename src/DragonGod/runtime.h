@@ -396,6 +396,18 @@ namespace dragongod
         std::vector<FrameDef> definitions_;
     };
 
+    // Built-in canonical fixture mapping and registry source.
+    // Author-owned domains may provide their own FrameRegistry/root frame instead.
+    [[nodiscard]] FrameId ScenarioRootFrame(StackScriptScenario scenario);
+    [[nodiscard]] FrameRegistry BuildFrameRegistry();
+
+    struct StackFrameRuntimeConfig
+    {
+        FrameRegistry registry;
+        FrameId rootFrame = FrameId::RootPushChild;
+        RuntimeMailboxInput mailboxInput;
+    };
+
     namespace Dg
     {
         using ConsiderationFn = float (*)(const FrameCtx& ctx);
@@ -519,6 +531,7 @@ namespace dragongod
     struct RuntimeChunk
     {
         StackScriptScenario scenario = StackScriptScenario::PushPopComplete;
+        FrameId rootFrame = FrameId::RootPushChild;
         TickIndex nextTick = 0;
         StackRunOutcome lastOutcome = StackRunOutcome::Continue;
         std::vector<ScheduledMessage> scheduledMessages;
@@ -535,7 +548,9 @@ namespace dragongod
     {
     public:
         StackFrameRuntimeSession(StackScriptScenario scenario, const RuntimeMailboxInput& mailboxInput);
+        explicit StackFrameRuntimeSession(StackFrameRuntimeConfig config);
         explicit StackFrameRuntimeSession(const RuntimeChunk& chunk);
+        StackFrameRuntimeSession(const RuntimeChunk& chunk, FrameRegistry registry);
         ~StackFrameRuntimeSession();
 
         [[nodiscard]] TickIndex NextTick() const;
@@ -546,10 +561,10 @@ namespace dragongod
         [[nodiscard]] FrameRunResult RunForTicks(TickIndex tickCount);
 
     private:
-        [[nodiscard]] static FrameRegistry BuildRegistry();
         [[nodiscard]] bool RunSingleTick(FrameRunResult& result);
 
         StackScriptScenario scenario_ = StackScriptScenario::PushPopComplete;
+        FrameId rootFrame_ = FrameId::RootPushChild;
         TickIndex nextTick_ = 0;
         StackRunOutcome lastOutcome_ = StackRunOutcome::Continue;
         FrameRegistry registry_;
@@ -569,6 +584,7 @@ namespace dragongod
             StackScriptScenario scenario,
             TickIndex tickCount,
             const RuntimeMailboxInput& mailboxInput) const;
+        [[nodiscard]] FrameRunResult RunForTicks(const StackFrameRuntimeConfig& config, TickIndex tickCount) const;
     };
 
     // Built-in scorer fixtures used by canonical proof/demo scenarios.

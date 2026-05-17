@@ -16,11 +16,12 @@ DragonGod currently provides a deterministic, tick-driven stack-frame runtime ce
 - chunk-based save/restore across a strict between-ticks boundary
 - replay comparison via bounded `TickTraceEntry` data
 
-Runtime entry points are `StackFrameRuntime` and `StackFrameRuntimeSession`; scenarios are currently selected by `StackScriptScenario` and mapped to built-in frame functions in the frame registry.
+Runtime entry points are `StackFrameRuntime` and `StackFrameRuntimeSession`.
 
-### Important current-shape limitation
+The runtime now supports both:
 
-The current repository does **not** yet expose a generic external author-registration API for arbitrary user-defined frame sets. The runtime uses a built-in registry populated by `BuildFrameRegistry()` and scenario-to-root mapping via `ScenarioRootFrame(...)`.
+- canonical fixture selection via `StackScriptScenario` + `ScenarioRootFrame(...)` + `BuildFrameRegistry()`
+- author-owned registration via `StackFrameRuntimeConfig` (`FrameRegistry` + root frame + mailbox input)
 
 ---
 
@@ -511,7 +512,7 @@ This is implementation truth in the current runtime, not a generic stack-machine
 
 Unregistered frame failure behavior (current runtime truth):
 
-- if control flow lands on a frame id that is not present in `BuildFrameRegistry()`, `registry.Find(...)` returns null,
+- if control flow lands on a frame id that is not present in the active `FrameRegistry`, `registry.Find(...)` returns null,
 - runtime treats that as terminal failure for the active tick (not a soft no-op),
 - event trace emits failed-exit/terminal-failed markers for that tick,
 - per-tick `tickTrace` entry for that tick records failed outcome, and run `finalOutcome` is `Failed`.
@@ -540,4 +541,4 @@ Debugging hint:
 These are current-state clarity gaps in repository ergonomics (not hidden assumptions):
 
 - Public docs for runtime are currently minimal (`src/DragonGod/README.md` is placeholder), so this file is the first substantial runtime truth layer.
-- Frame extensibility is presently internal/static (built-in frame registry), so external “author your own frame pack” workflow is not yet documented because it is not yet implemented as a stable public API.
+- Author-owned frame registration now has a public seam (`StackFrameRuntimeConfig`), but docs/examples are still canonical-fixture-heavy and should continue being clarified over time.

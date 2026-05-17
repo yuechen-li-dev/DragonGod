@@ -127,6 +127,23 @@ namespace
 
         return serialized;
     }
+
+    [[nodiscard]] dragongod::FrameControl AuthorRootPushChildComplete(dragongod::FrameCtx& ctx)
+    {
+        switch (ctx.Pc()) {
+        case 0:
+            return dragongod::Dg::Push(dragongod::FrameId::ChildPop, 1);
+        case 1:
+            return dragongod::Dg::Complete();
+        default:
+            return dragongod::Dg::Fail(9100);
+        }
+    }
+
+    [[nodiscard]] dragongod::FrameControl AuthorChildPop(dragongod::FrameCtx&)
+    {
+        return dragongod::Dg::Pop();
+    }
 }
 
 FACT(M1c_CanonicalFrames_ExecutePushPopAndRestoreParent)
@@ -318,4 +335,49 @@ FACT(M1c_RepeatedRuns_WithSameInputs_HaveNoTraceDrift)
     ASSERT_TRUE(firstRun.finalOutcome == secondRun.finalOutcome, "deterministic runs must match final outcome");
     ASSERT_EQUAL(firstRun.trace.size(), secondRun.trace.size(), "deterministic runs must match trace length");
     ASSERT_SEQUENCE_EQUAL(SerializeTrace(firstRun.trace), SerializeTrace(secondRun.trace), "deterministic runs must match ordered trace exactly");
+}
+
+FACT(M16a_AuthorOwnedRegistry_ConfigRun_WorksThroughPublicRuntimeSurface)
+{
+    dragongod::FrameRegistry registry;
+    registry.Add(dragongod::FrameId::RootContinueThenComplete, AuthorRootPushChildComplete);
+    registry.Add(dragongod::FrameId::ChildPop, AuthorChildPop);
+
+    const dragongod::StackFrameRuntime runtime;
+    const dragongod::FrameRunResult run = runtime.RunForTicks(
+        dragongod::StackFrameRuntimeConfig{
+            .registry = registry,
+            .rootFrame = dragongod::FrameId::RootContinueThenComplete,
+            .mailboxInput = dragongod::RuntimeMailboxInput{}
+        },
+        8);
+
+    ASSERT_TRUE(run.finalOutcome == dragongod::StackRunOutcome::Completed, "author-owned registry config run should complete");
+    ASSERT_TRUE(!run.trace.empty(), "author-owned registry run should emit trace");
+    ASSERT_TRUE(
+        run.trace.front().activeFrame == dragongod::FrameId::RootContinueThenComplete,
+        "author-owned root frame should be first active frame");
+}
+
+FACT(M16a_AuthorOwnedRegistry_RestorePath_UsesSuppliedRegistry)
+{
+    dragongod::FrameRegistry registry;
+    registry.Add(dragongod::FrameId::RootContinueThenComplete, AuthorRootPushChildComplete);
+    registry.Add(dragongod::FrameId::ChildPop, AuthorChildPop);
+
+    dragongod::StackFrameRuntimeSession firstLeg(dragongod::StackFrameRuntimeConfig{
+        .registry = registry,
+        .rootFrame = dragongod::FrameId::RootContinueThenComplete,
+        .mailboxInput = dragongod::RuntimeMailboxInput{}
+    });
+
+    const dragongod::FrameRunResult preSnapshot = firstLeg.RunForTicks(1);
+    const dragongod::RuntimeChunk snapshot = firstLeg.Save();
+
+    dragongod::StackFrameRuntimeSession restored(snapshot, registry);
+    const dragongod::FrameRunResult postSnapshot = restored.RunForTicks(8);
+
+    ASSERT_EQUAL(static_cast<std::size_t>(1), preSnapshot.tickTrace.size(), "first leg should execute one tick");
+    ASSERT_TRUE(postSnapshot.finalOutcome == dragongod::StackRunOutcome::Completed, "restore path with author-owned registry should complete");
+    ASSERT_TRUE(snapshot.rootFrame == dragongod::FrameId::RootContinueThenComplete, "snapshot should preserve author-owned root frame");
 }

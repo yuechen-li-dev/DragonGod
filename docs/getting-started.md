@@ -1,15 +1,13 @@
 # DragonGod getting started (current repo workflow)
 
-## Read this first: current registration limitation
+## Read this first: registration surfaces
 
-DragonGod frame registration is currently **internal/static**.
+DragonGod now exposes two explicit registration paths:
 
-That means your first authored frame today requires editing core runtime files directly:
+- **Canonical built-in fixtures**: selected by `StackScriptScenario`, mapped by `ScenarioRootFrame(...)`, and populated by `BuildFrameRegistry()`.
+- **Author-owned registries**: provide your own `FrameRegistry` + root frame via `StackFrameRuntimeConfig`.
 
-- `src/DragonGod/runtime.h` (add `FrameId` and usually a `StackScriptScenario` value)
-- `src/DragonGod/runtime_nodes.cpp` (add frame function(s), scenario root mapping, and `BuildFrameRegistry()` entry)
-
-There is not yet an external “register my own frame pack” public API.
+Use canonical fixtures for proof/demo coverage, and prefer author-owned registries for domain-owned runtime logic.
 
 ---
 
@@ -93,7 +91,7 @@ enum class RootHelloTwoPhasePhase : std::uint32_t
 }
 ```
 
-### 4) Register the frame in the internal registry
+### 4) Register the frame in the canonical fixture registry
 
 In `BuildFrameRegistry()` inside `src/DragonGod/runtime_nodes.cpp`:
 
@@ -121,6 +119,22 @@ What to inspect from `run` first:
 - `run.trace` only when you need lower-level frame event sequence details.
 
 If you need continuation/stepping or save/restore, switch from `StackFrameRuntime` to `StackFrameRuntimeSession` and call `RunForTicks(...)` in legs with `Save()`/restore between legs.
+
+If you want a domain-owned frame pack (no canonical scenario wiring), construct and pass a `StackFrameRuntimeConfig`:
+
+```cpp
+dragongod::FrameRegistry registry;
+registry.Add(dragongod::FrameId::RootHelloTwoPhase, &nodes::RootHelloTwoPhase);
+
+const dragongod::StackFrameRuntime runtime;
+const dragongod::FrameRunResult run = runtime.RunForTicks(
+    dragongod::StackFrameRuntimeConfig{
+        .registry = registry,
+        .rootFrame = dragongod::FrameId::RootHelloTwoPhase,
+        .mailboxInput = dragongod::RuntimeMailboxInput{}
+    },
+    4);
+```
 
 Terminal-session edge case (current behavior): if a session is already terminal before a `RunForTicks(...)` call, that call executes zero ticks and returns empty per-tick vectors (`tickTrace`, `trace`, `dirtySlotsByTick`, `visibleMailboxByTick`, `actuationByTick`). Treat that as “no advancement happened,” not silent progression.
 

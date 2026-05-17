@@ -1,5 +1,7 @@
 #include "runtime_internal.h"
 
+#include <utility>
+
 namespace dragongod
 {
     namespace
@@ -50,23 +52,39 @@ namespace dragongod
     StackFrameRuntimeSession::StackFrameRuntimeSession(
         StackScriptScenario scenario,
         const RuntimeMailboxInput& mailboxInput)
-        : scenario_(scenario)
-        , registry_(BuildRegistry())
-        , scheduledMessages_(mailboxInput.scheduledMessages)
+        : StackFrameRuntimeSession(StackFrameRuntimeConfig{
+            .registry = BuildFrameRegistry(),
+            .rootFrame = ScenarioRootFrame(scenario),
+            .mailboxInput = mailboxInput
+        })
+    {
+        scenario_ = scenario;
+    }
+
+    StackFrameRuntimeSession::StackFrameRuntimeSession(StackFrameRuntimeConfig config)
+        : rootFrame_(config.rootFrame)
+        , registry_(std::move(config.registry))
+        , scheduledMessages_(std::move(config.mailboxInput.scheduledMessages))
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
-        stack_.push_back(StackFrameChunkEntry{ .id = ScenarioRootFrame(scenario_) });
-        for (const Message& message : mailboxInput.initialMessages) {
+        stack_.push_back(StackFrameChunkEntry{ .id = rootFrame_ });
+        for (const Message& message : config.mailboxInput.initialMessages) {
             mailbox_.Enqueue(message);
         }
     }
 
     StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk)
+        : StackFrameRuntimeSession(chunk, BuildFrameRegistry())
+    {
+    }
+
+    StackFrameRuntimeSession::StackFrameRuntimeSession(const RuntimeChunk& chunk, FrameRegistry registry)
         : scenario_(chunk.scenario)
+        , rootFrame_(chunk.rootFrame)
         , nextTick_(chunk.nextTick)
         , lastOutcome_(chunk.lastOutcome)
-        , registry_(BuildRegistry())
+        , registry_(std::move(registry))
         , actRuntime_(std::make_unique<ActRuntime>())
         , utilityMemory_(std::make_unique<UtilityMemoryStore>())
     {
@@ -109,6 +127,7 @@ namespace dragongod
         // Save() is valid between ticks after all effects of tick N are complete and before tick N+1 starts.
         return RuntimeChunk{
             .scenario = scenario_,
+            .rootFrame = rootFrame_,
             .nextTick = nextTick_,
             .lastOutcome = lastOutcome_,
             .scheduledMessages = scheduledMessages_,
@@ -282,11 +301,6 @@ namespace dragongod
         return !IsTerminal();
     }
 
-    [[nodiscard]] FrameRegistry StackFrameRuntimeSession::BuildRegistry()
-    {
-        return BuildFrameRegistry();
-    }
-
     [[nodiscard]] TraceComparisonResult CompareTickTraces(
         const std::vector<TickTraceEntry>& expected,
         const std::vector<TickTraceEntry>& actual)
@@ -433,6 +447,14 @@ namespace dragongod
         const RuntimeMailboxInput& mailboxInput) const
     {
         StackFrameRuntimeSession session(scenario, mailboxInput);
+        return session.RunForTicks(tickCount);
+    }
+
+    [[nodiscard]] FrameRunResult StackFrameRuntime::RunForTicks(
+        const StackFrameRuntimeConfig& config,
+        TickIndex tickCount) const
+    {
+        StackFrameRuntimeSession session(config);
         return session.RunForTicks(tickCount);
     }
 }
